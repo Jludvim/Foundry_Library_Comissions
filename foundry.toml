@@ -2,5 +2,10 @@
 src = "src"
 out = "out"
 libs = ["lib"]
+remappings = [
+    "lib/chainlink/contracts = @chainlink/contracts",
+    "lib/openzeppelin-contracts = @openzeppelin/contracts"
+    ]
+#/AggregatorV3Interface.sol
 
 # See more config options https://github.com/foundry-rs/foundry/blob/master/crates/config/README.md#all-options

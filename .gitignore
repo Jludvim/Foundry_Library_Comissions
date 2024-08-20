@@ -12,3 +12,6 @@ docs/
 
 # Dotenv file
 .env
+
+# Source files for a related project
+/src/Unused/
