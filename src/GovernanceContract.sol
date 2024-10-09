@@ -30,29 +30,7 @@ pragma solidity ^0.8.18;
  * become smaller.
  */
 
-import {AuthorComissions} from "../src/AuthorComissions.sol";
-import {Strings} from "@openzeppelin/contracts/utils/Strings.sol";
-import {PriceConverter} from "../src/PriceConverter.sol";
-import {AggregatorV3Interface} from "@chainlink/contracts/src/v0.8/shared/interfaces/AggregatorV3Interface.sol";
-import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 
-contract GovernanceContract is ReentrancyGuard{
-
-error AddressIsntALibrary();
-error AddressIsntAnAuthor();
-error ValueIsTooSmall();
-error NameIsIncorrect();
-error TitleCantBeEmpty();
-error InsufficientEth();
-error NameSizeIsIncorrect();
-error AddressIsntAReviewer();
-error BookDataIsIncorrect();
-error AddressIsntAuthorOfBook();
-error TitleIsIncorrect();
-error AddressIsntAnAuthorOrLibrary();
-error TooManyElements();
-error CantVoteTwice();
-error AddressIsAlreadyRegistered();
 
 /**
  * Layout and general plan:
@@ -111,6 +89,32 @@ error AddressIsAlreadyRegistered();
  * The weaknesses of democracy remain present in the system, but its strengths overcome any other present option in lack of an algorythmic  datafeed for an oracle solution to access this data.
  * As far as I see, no solution for these shortcomings is currently possible.
  */
+
+
+
+import {AuthorComissions} from "../src/AuthorComissions.sol";
+import {Strings} from "@openzeppelin/contracts/utils/Strings.sol";
+import {PriceConverter} from "../src/PriceConverter.sol";
+import {AggregatorV3Interface} from "@chainlink/contracts/src/v0.8/shared/interfaces/AggregatorV3Interface.sol";
+import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
+
+contract GovernanceContract is ReentrancyGuard{
+
+error AddressIsntALibrary();
+error AddressIsntAnAuthor();
+error ValueIsTooSmall();
+error NameIsIncorrect();
+error TitleCantBeEmpty();
+error InsufficientEth();
+error NameSizeIsIncorrect();
+error AddressIsntAReviewer();
+error BookDataIsIncorrect();
+error AddressIsntAuthorOfBook();
+error TitleIsIncorrect();
+error AddressIsntAnAuthorOrLibrary();
+error TooManyElements();
+error CantVoteTwice();
+error AddressIsAlreadyRegistered();
 
 
 
