@@ -1,5 +1,10 @@
-// SPDX-License-Identifier: MIT
+//SPDX-License-Identifier: Apache-2.0
 
+/**
+ * @title: GovernanceContract
+ * @author: Jeremias Pini
+ * @license: Apache License 2.0
+ */
 pragma solidity ^0.8.18;
 
 
@@ -28,8 +33,8 @@ pragma solidity ^0.8.18;
 import {AuthorComissions} from "../src/AuthorComissions.sol";
 import {Strings} from "@openzeppelin/contracts/utils/Strings.sol";
 import {PriceConverter} from "../src/PriceConverter.sol";
-import {AggregatorV3Interface} from "chainlink/contracts/src/v0.8/shared/interfaces/AggregatorV3Interface.sol";
-import {ReentrancyGuard} from "../openzeppelin-contracts/contracts/utils/ReentrancyGuard.sol";
+import {AggregatorV3Interface} from "@chainlink/contracts/src/v0.8/shared/interfaces/AggregatorV3Interface.sol";
+import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 
 contract GovernanceContract is ReentrancyGuard{
 

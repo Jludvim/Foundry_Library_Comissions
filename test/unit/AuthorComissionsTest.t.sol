@@ -18,7 +18,8 @@ uint256 constant GAS_PRICE = 1;
 uint256 constant COMISSION_SET = 5;
 
 function setUp() external{
-authorComissions = deployAuthorComissions.run(manager);
+vm.prank(manager);
+authorComissions = deployAuthorComissions.run();
 authorComissions.addLibrary(LIBRARY, "Saint Anthony Local Library", COMISSION_SET);
 authorComissions.addAuthor("Alice James", AUTHOR);
 vm.deal(LIBRARY, STARTING_BALANCE);
