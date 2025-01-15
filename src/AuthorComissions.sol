@@ -3,85 +3,68 @@
 /**
  * @title: AuthorComissions
  * @author: Jeremias Pini
- * @license: Apache License 2.0
+ * @license: MIT
  */
+
+
+
+// Layout of Contract:
+// version
+// imports
+// interfaces, libraries, contracts
+// errors
+// Type declarations
+// State variables
+// Events
+// Modifiers
+// Functions
+
+// Layout of Functions:
+// constructor
+// receive function (if exists)
+// fallback function (if exists)
+// external
+// public
+// internal
+// private
+// view & pure functions
+
+
+
 
 /**
  * Development notes:
  * 
  * program whose aim is to provide a platform for authors to get a comission on the transactions made
  * within a library, and the books that are lent to the readers.
- * The PLAN would be to create a mapping of addresses from book to the address of registered authors,
- * so that through a platform they can receive a small sum for every book of them that is lended.
- * This could also imply that daily transactions in libraries would have to be made through the
- * blockchain, if this would carry any force. OR that the system through which the payments are delivered does 
- * deliver onchain data.
- * OR if the transactions are not made through the blockchain, then at least, be "notified" in some manner
- *  through the blockchain. Reducing the extra work and liability for the libraries would no doubt be 
- * one aim in interests of the project.
- * Using the AggregatorV3Interface it could be possible to define in USD the fix comission each library
- * might determine to add onto their current pricing, to know how much to transfer.
  * 
+ * >> It would be needed of the program to register libraries, authors, and books.
+ * >> some ideas for that could be = manually, an authomatic proccess, with the assertion performed with another system, 
+ *                                    a formal proccess performed by the project participant's, etc)
+ * >> Registration of books will be tied to a particular author.
+ * >> The only use of library funds will be those deposits/comissions.
+ * >> The contract could charge a small sums to registering authors.
+ * >> The contract needs to allow libraries to send payments for particular books. Receive those payments in the contract, 
+ *    and delivering them to the authors.
  *
+ *  Fundamental issue = the project doesn't greatly sound like it would especially benefit from blockchain.
+ *  No doubt, any financial-related project can benefit from the security and ease of payment that blockchains provide. But as things stand now,
+ *  the acceptance / development / usage and perhaps features that blockchain technology has, is not enough to justify its usage
+ *  for any and all financial purposes. Many changes would be expected on the way to those circunstances, in which the landscape and tools at our disposal
+ *  would also become different. 
+ *  Even with all this, it is a nice experience and practice.
  * 
- * 
- * Definition of the system requirements:
- * It would be needed of the program to register libraries, authors, and books.
- * Registration could be manually done. An authomatic proccess
- * Would be even better.
- * Registration could be done with the assertion performed with another system,
- * or setting a registration formal proccess performed by the project personnel, or both.
- * Registration of books could be related to the registration of authors.
- * The only use of the library funds will be paying the mentioned comissions. Nothing else
- * The contract could charge a small sums to registering authors.
- * The contract needs to allow books to receive payments from the libraries. Receive those payments in the contract, 
- * deliver to the authors.
- * 
- * To allow books to send payments knowing the author of the book/book itself.
- * MAYBE, allow users to send donations to the authors they like. Might be a more exposed dynamic, and more risky.
- * 
- * 
- * 
- * 
- * The system could even futurely be expanded to something similar, and yet slightly different for donations:
- * Register a set of addresses for any particular project (think a movie),
- *  receive the authorization from all those addresses,
- * and allow the participants of the aforementioned project to receive donations in relation to their work in the project
- * and according to the split they could have previously defined or hereby define for the donations.
- * Sounds akin to paying for the product, but without the material expenses, and changing "for" to "to"
- * Yet, in this identity assertions might be an actual headache. And wherever this becomes freer, it would need an oracle
- * or datafeed that could solve this. At least for copyright holders, it doesn't seem like a solved problem as far as I could see.
- * 
- * 
- *
  * 
  * Problems: 
- * There is little benefit and incentive for the libraries
- * It might possibly be tolerable as far as the economic situation, both nationally and internally for a library 
- * allows it, and more so if it was a complete software with administrative benefits.
  * 
- * It might be wise to create a full suite for library management accompanied by this feature,
- * that could be the main innovation of the project.
+ * In-development issues:  
+ * >> It might be wise to create a full suite for library management accompanied by this feature,
+ * as the main innovation of the project.
+ * >> Is there any way to on-board authors in a secure manner (blockchain's sort of secure)? 
+ *      Seems hardly possible, unless we find a way to utopically confirm the identity of an account holder, and contrast it
+ *      with the copyright holder of the book.  
+ * A possible (easier) solution could be a democratic representation of the relevant investors of the protoccol (i.e. participating libraries in our case.)
  * 
- * 
- * Is there any way to on-board authors in a decentralized way into the project? 
- * Seems hardly possible, unless we find a way to confirm the identity of an account holder, and contrast it
- * with the copyright holder of the book.  
- * 
- * Perhaps something accross the lines of an association between
- *  the copyright holder and wallets can be an interesting project
- * 
- * 
- * 
- * Is it possible to in a decentralized manner on board authors?
- * Is it possible to in a decentralized manner on board libraries?
- * A possible solution could be through the growth of the project / network, and in democratic representation
- * of the relevant investors of the protoccol (i.e. participating libraries in our case)
- * 
- * ISSUES:
- * The repo needs to get some order, its really messy.
- * It needs debugging.
- * It looks like the mappings and declarations have redundancies. And some things could be simpler than they are. 
  * 
  * Requirements of the main users of this contract:
  * Libraries: load cash, extract cash, send donation to author, register, unregister
@@ -101,28 +84,12 @@ import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol
 
 contract AuthorComissions is Ownable, ReentrancyGuard{
 
-  address s_owner;
-  //address[] private s_libraries;
-  //address[] private s_authors;
 
-//It might be wise to define an external index, non related to the storage
-  struct Book{
-    string s_bookTitle;
-    string s_authorName;
-    uint256 s_id;
-    address author;
-  }
 
-  /*mapping that defines a mapping from referencing index aka ID (never changing for stability and security reasons)
-   to the real data storage index (might change with deletions)*/
-  mapping(uint256 virtualIndex => uint256 realIndex) private indexToStorageIndex;
+/*/////////////////////////////////////////////////////////////////
+                          ERRORS
+/////////////////////////////////////////////////////////////////*/
 
-  Book[] s_books;
-
-  AggregatorV3Interface public s_priceFeed;
-
-  uint256 public constant MINIMUM_USD = 10e18;
-  
   error HasntEnoughBalance();
   error AddressIsntARegisteredLibrary();
   error AddressIsntARegisteredAuthor();
@@ -131,59 +98,109 @@ contract AuthorComissions is Ownable, ReentrancyGuard{
   error BelowMinValue();
   error WithdrawalFailed();
   error AddressCantGetBalance();
+  error AuthorComissions__AuthorNameIsIncorrect();
+                      
+/*/////////////////////////////////////////////////////////////////
+                        VARIABLES
+/////////////////////////////////////////////////////////////////*/
 
-  //address to boolean describing whether the address is part of the protocol
-  //Currently, probably all the checks featuring this might be replaceable with something else, to avoid having these
-  //two. 
-  mapping(address => bool) private isLibrary;
-  mapping(address => bool) private isAuthor;
+  address s_owner;
+  uint256 booksCount;
+  Book[] s_books;
+  
+  AggregatorV3Interface public s_priceFeed;
+  uint256 public constant MINIMUM_USD = 10e18;
+  enum ProtocolRole{ NON_PARTICIPANT, LIBRARY, AUTHOR }
+
+
+  /*mapping that connects unique indexes of books (its single unique ID, never changing) to the actual
+  array index (which changes every time an item is deleted)*/
+  mapping(uint256 virtualIndex => uint256 realIndex) private indexToStorageIndex;
 
   //These Store the balance of an address, and the NAME of the address defined in the protocol 
-  //Both mappings work for libraries and authors
   mapping(address => uint256) private addressToBalance;
-  mapping(address => string) private addressToName; //particularly useful for authors
-  
+  mapping(address => string) private addressToName; //A Enum or something akin can be added to the stored-value
+  mapping(address => ProtocolRole) addressToRole;
   //Returns the comission value that the library sets for their own contributions
   mapping(address => uint256) private libraryComissionInUsd;
 
   //Gets exact names for books registered for that author, useful for transactions.
-  //It is necessary to remove books written by an author from the contract.
-
-  mapping(address author => uint256[] books) public authorToBooks;
-  mapping(string book => string author) public bookToAuthor;
-
-
-  /*Internally relevant for the contract, does fetch the address(es) to deposit to based on the bookname*/
-  mapping(string bookname => mapping(string authorname => address authorsAddress)) private bookToAuthorsAddress;
+  mapping(address author => uint256[] books) private authorToBooks; //<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<CHECK
+       //The default value of book ID is probably used, and authorToBooks probably has it checked for everyone. NEEDS TO BE reviewed. 
+     //It could cause some problems, think of empty book IDs, and any author "having it", by default. <<--Check this overall in the contract
 
 
+  /*Internally relevant for the contract, does fetch the address(es) to deposit to based on the
+  bookname and authorname pair*/
+  //THIS ALSO FEELS BAD. SEEMS LIKE WE USE TWO REPEATABLE VALUES. Probably would create conflicts 
+  //FOR example, overwritting an author name, and bookname, with a new author. What would you do then?
 
-///////////////////////////////
-///// FUNCTIONS ///////////////
-///////////////////////////////
+  //Maybe, maybe replace bookname with bookId. It could work better.
+  mapping(uint256 bookId => address authorsAddress) private bookToAuthorsAddress;
 
-constructor(AggregatorV3Interface priceFeed) Ownable(msg.sender){
-s_priceFeed = priceFeed;
-}
+
+
+  struct Book{
+    string s_bookTitle;
+    string s_authorName;
+    uint256 s_id;
+    address author;
+  }
+
+
+
+/*//////////////////////////////////////////////////
+                    FUNCTIONS 
+//////////////////////////////////////////////////*/
+
+  constructor(AggregatorV3Interface priceFeed) 
+  Ownable(msg.sender){
+    s_priceFeed = priceFeed;
+    booksCount = 1; 
+    //booksCount starts at 1 to avoid any risk related to default values
+
+  }
+
+
+
+
+
+
+/*///////////////////////////////////////////////////////////
+                    External functions 
+///////////////////////////////////////////////////////////*/
+
+    fallback() external payable {
+        addCapital(); //if the address isn't part of the protocol, the call reverts
+  }
+
+  receive() external payable {
+        addCapital();
+  }
 
 
 /**
  * 
- * @param bookname Name of book as specified in authorToBooks
+ * @param bookId Unique ID of the book in the protocol
  * @param authorname Name of the Author
  * Function that allows an address (Library) to make deposits for a particular book/author. 
- * lets maybe add an author parameter for security reasons? and then check that address is two-way correct (looks safer)
  */
-  function depositComission(string memory bookname, string memory authorname) public returns(bool success){
-    if(isLibrary[msg.sender] == false)
+  function depositComission(uint256 bookId, string memory authorname) external returns(bool success){
+    if(addressToRole[msg.sender] != ProtocolRole.LIBRARY)
     {
       revert AddressIsntARegisteredLibrary();
     }
     if( addressToBalance[msg.sender] < getComissionInEth(libraryComissionInUsd[msg.sender]) ){
       revert BalanceIsLessThanSetComission();
     }
+
+    address payable author = payable(bookToAuthorsAddress[bookId]);
+
+    if(keccak256(abi.encode(addressToName[author])) != keccak256(abi.encode(authorname))){
+        revert AuthorComissions__AuthorNameIsIncorrect();
+    }
     
-    address payable author = payable(bookToAuthorsAddress[bookname][authorname]);
+
     uint256 comission = libraryComissionInUsd[msg.sender];
     addressToBalance[msg.sender] -= comission;
     addressToBalance[author] += comission;
@@ -193,16 +210,120 @@ s_priceFeed = priceFeed;
 
 
 
-  /** Adds ETH to the Library Account for it to make deposits.
+
+/**
+ * adds a library to the contract. 
+ * If the owner is the governanceContract (it should), it  does performs many checks before calling.
+ * 
+ * @param newLibrary address of EOW of the library.
+ * @param libraryName alphanumeric name of the library
+ * @param comissionSet comission choosen by the library for lending instances
+ */
+function addLibrary(address newLibrary, string memory libraryName, uint256 comissionSet) 
+external onlyOwner{
+  addressToRole[newLibrary] = ProtocolRole.LIBRARY;
+  addressToName[newLibrary] = libraryName;
+  libraryComissionInUsd[newLibrary] = comissionSet;
+}
+
+
+
+
+/**
+ * function used by the governanceContract to add an author to the contract.
+ * @param name Name of the author
+ * @param author Wallet address of the author
+ */
+function addAuthor(string memory name, address payable author)
+external onlyOwner{
+  addressToRole[author] = ProtocolRole.AUTHOR;
+  addressToName[author] = name;
+}
+
+
+
+/**
+ * Function used by the governanceContract to add a book. 
+ * Books are proposed by authors in that contract, which upon their approval does call this function
+ * @param bookName alphanumeric name of the book
+ * @param authorName name of the author
+ * @param author address of the author
+ */
+//This looks sorta prone to reentrancy issues.
+function addBook(string memory bookName, string memory authorName, address payable author)
+ external onlyOwner returns (uint256 id){
+  id = booksCount;
+  booksCount++;
+  s_books.push(Book(bookName, authorName, id, author));
+  //dubious yet
+  authorToBooks[author].push(id);
+
+  return id;
+}
+
+
+/**
+ * function called by the manager to remove a library from the protocol.
+ * @param libraryToRemove address of the library to be removed
+ */
+function removeLibrary(address libraryToRemove) 
+external onlyOwner{
+  addressToRole[libraryToRemove] = ProtocolRole.NON_PARTICIPANT;
+  addressToName[libraryToRemove] = "";
+  libraryComissionInUsd[libraryToRemove] = 0;
+    if(addressToBalance[libraryToRemove] > 0){
+      addressToBalance[libraryToRemove] = 0;
+      Withdraw();
+  }
+}
+
+
+/**
+ * function called by the manager to remove an author from the protocol.
+ * @param authorToRemove address of the author to be removed
+ */
+function removeAuthor(address authorToRemove) 
+external onlyOwner{
+  addressToRole[authorToRemove] = ProtocolRole.NON_PARTICIPANT;
+  addressToName[authorToRemove] = "";
+  if(addressToBalance[authorToRemove] > 0){
+      addressToBalance[authorToRemove] = 0;
+      Withdraw();
+  }
+  
+  uint256 i=0;
+  
+  //A loop is needed here, length cant be predicted
+
+  bool removingAuthor = true;
+  for(i; i < authorToBooks[authorToRemove].length; i++){
+    removeBook(authorToBooks[authorToRemove][i], removingAuthor);
+    //CHECK WHETHER 0 IS A USED INDEX. it shouldn't.
+    if(i == authorToBooks[authorToRemove].length-1){
+      delete authorToBooks[authorToRemove];
+    }
+
+  }
+}
+
+
+/*///////////////////////////////////////////////////////////
+                PUBLIC FUNCTIONS
+///////////////////////////////////////////////////////////*/
+
+
+ /** Adds ETH to the contract in name of the Library Account for deposits to get paid.
   * Conditions:
   * 1. The address is a registered library
   * 2. The amount of ETH is above the minimum deposit in USD
   */
-function addCapital() public payable returns(bool success){
+function addCapital() public 
+payable returns(bool success)
+{
   if(PriceConverter.getConversionRate(msg.value, s_priceFeed) < MINIMUM_USD){
     revert BelowMinValue();
   }
-  if(isLibrary[msg.sender] == false){
+  if(addressToRole[msg.sender] != ProtocolRole.LIBRARY){
     revert AddressIsntARegisteredLibrary();
   }
 
@@ -211,106 +332,133 @@ function addCapital() public payable returns(bool success){
 }
 
 
+
+
   /*
   * Allows both Authors and libraries to extract their balance from the contract.
   * Conditions: 
   * 1. The address is a registered library/author
-  * 2. It has more balance than the minimum stablished for transactions
+  * 2. It has more balance than the minimum established for transactions 
   */
-function Withdraw() public returns(bool success){
+  function Withdraw() public returns(bool success)
+  {
 
-  if(isLibrary[msg.sender] == true || isAuthor[msg.sender] == true){
-    revert AddressCantWithdraw();
-  } 
-  if(isAboveMinValue(addressToBalance[msg.sender])){
-    revert  HasntEnoughBalance();
-  }
-
-  //makes the transaction, and reverts if something doesn't go well
-  (bool callSuccess, ) = payable(msg.sender).call{value: addressToBalance[msg.sender]}("");
-    if(callSuccess == false){
-      revert WithdrawalFailed();
+    if(
+      keccak256(abi.encodePacked(addressToName[msg.sender])) == keccak256(abi.encodePacked(""))
+    )//all members of the protocol should have a name
+    { 
+      revert AddressCantWithdraw();
+    } 
+    if(isAboveMinValue(addressToBalance[msg.sender])){
+      revert  HasntEnoughBalance();
     }
-    
-  addressToBalance[msg.sender] -= addressToBalance[msg.sender];
-  return true;
-}
 
-
-
-//The aim in all of these onlyOwner modifiers is creating an engine that governs the contract,
-//Where approvals, elections, votes, endorsements/etc do happen through it
-//So that the program, addition of libraries, authors, and books can be done in a decentralized manner
-
-function addLibrary(address newLibrary, string memory libraryName, uint256 comissionSet) 
-external onlyOwner{
-  isLibrary[newLibrary] = true;
-  addressToName[newLibrary] = libraryName;
-  libraryComissionInUsd[newLibrary] = comissionSet;
-}
-
-
-function addAuthor(string memory name, address payable author)
- external onlyOwner{
-  isAuthor[author] = true;
-  addressToName[author] = name;
-}
-
-
-function addBook(string memory bookName, string memory authorName, address payable author)
- external onlyOwner returns (uint256 id){
-  id = s_books.length;
-  s_books.push(Book(bookName, authorName, id, author));
-
-  //dubious yet
-  authorToBooks[author].push(id);
-
-  return id;
-}
-
-
-
-function removeLibrary(address libraryToRemove) 
-external onlyOwner {
-  isLibrary[libraryToRemove] = false;
-  addressToName[libraryToRemove] = "";
-  libraryComissionInUsd[libraryToRemove] = 0;
-}
-
-
-function removeAuthor(address authorToRemove) 
-external onlyOwner{
-    //  mapping(string author => uint256[] books) public authorToBooks;
-  isAuthor[authorToRemove] = false;
-  addressToName[authorToRemove] = "";
-
-  for(uint256 i; i < authorToBooks[authorToRemove].length; i++){
-    removeBook(authorToBooks[authorToRemove][i]);
+    //executes the transaction, and reverts if something doesn't go well
+    (bool callSuccess, ) = payable(msg.sender).call{value: addressToBalance[msg.sender]}("");
+      if(callSuccess == false){
+        revert WithdrawalFailed();
+      }
+      
+    addressToBalance[msg.sender] -= addressToBalance[msg.sender];
+    return true;
   }
 
 
-}
 
 
 /**
- * Removes a book from the system
+ * Function to be called by the manager (governanceContract) to remove a book from the protocol.
+ * Book removals are proposed in the governanceContracts by authors, and upon approval, this code is executed.
  * @param id ID of the book
+ * @param deletingAllBooks argument that asserts whether we are looping through all books from the author, and if so the elimination of that list
+ * will be handled by the removeAuthor function.
  */
-function removeBook(uint256 id) 
- public onlyOwner{
-    uint256 storageIndex = indexToStorageIndex[id];
+function removeBook(uint256 id, bool deletingAllBooks) //<< INCOMPLETE
+public onlyOwner
+{
+  uint256 storageIndex = indexToStorageIndex[id];
 
   s_books[storageIndex] = s_books[s_books.length - 1];
   (,, uint256 movedBookId,) = getBookDataByStorageIndex(storageIndex);
 
   indexToStorageIndex[movedBookId] = storageIndex; 
   s_books.pop();
+
+
+  /*If deletingAllBooks is true, we can't update metadata halfway through deletions.
+  removeAuthor (caller) handles it.*/
+  if(deletingAllBooks == false){
+      address author = bookToAuthorsAddress[id];
+      uint256 length = authorToBooks[author].length;
+      
+      for(uint256 i=0; i < length-1; i++){  //Find the book on the list
+        if(authorToBooks[author][i] == id){ 
+          authorToBooks[author][i] = authorToBooks[author][length-1]; //Replace it with the last
+          authorToBooks[author].pop();  //delete the last spot
+        }
+      }
+  }
+
+}
+
+
+
+
+
+/**
+ * function that returns the data of a book by the unique never-changing ID number of a book.
+ * (logical index)
+ * This function is the one called to fetch any book's data.
+ * @param id id value of the book to fetch
+ * @return bookTitle Alphanumeric title of the book
+ * @return authorName Alphanumeric title of the author
+ * @return bookId Id of the book (same as calling param)
+ */
+function getBookDataById(uint256 id) public view 
+returns(string memory bookTitle, string memory authorName, uint256 bookId)
+{
+//id argument and bookId returned value are the exact same parameter
+  uint256 storageIndex = indexToStorageIndex[id];
+  (bookTitle, authorName, bookId,) = getBookDataByStorageIndex(storageIndex);
+
+   return (bookTitle, authorName, bookId);
 }
 
 
 /**
- * 
- * @param index current storage index of the book in this contract
+ * function that returns the commission value set by the library (USD) to ETH.
+ * @param comissionInUsd value in USD to convert to eth.
+ * @return comissionInEth value in eth.
+ */
+function getComissionInEth(uint256 comissionInUsd) public view returns(uint256 comissionInEth){
+  uint256 ethPrice = PriceConverter.getConversionRate(1, s_priceFeed);
+  comissionInEth = comissionInUsd * ethPrice;
+  return comissionInEth;
+}
+
+
+
+/*/////////////////////////////////////////////////////////
+                    INTERNAL FUNCTIONS
+/////////////////////////////////////////////////////////*/
+
+/**
+ * @notice Transfers ownership of the contract.
+ * a small override of the OpenZeppelin implementantion to show the owner of the contract
+ * on the s_owner state variable
+ * @param newOwner address to which ownership is transferred
+ */
+function _transferOwnership(address newOwner) internal override{
+    s_owner = newOwner;
+    Ownable.transferOwnership(newOwner);
+}
+
+
+
+/**
+ * function that returns the data of a book by its actual array index. 
+ * Only to be called by the getBookDataById function
+ * @param index current storage index of the book in the array
  * @return bookName Name of the book
  * @return authorName Name of its author
  * @return id Its uinque and permanent ID
@@ -324,47 +472,18 @@ returns(string memory bookName, string memory authorName, uint256 id, address au
   s_books[index].author);
 }
 
-function getBookDataById(uint256 id) public view 
-returns(string memory bookTitle, string memory authorName, uint256 bookId){
-
-  uint256 storageIndex = indexToStorageIndex[id];
-  (bookTitle, authorName, id,)=getBookDataByStorageIndex(storageIndex);
-
-  //Thought of returning the id according to the fetch, just in case
-  return (bookTitle, authorName, id);
-}
 
 
-function getAllBookDataById(uint256 id) external view onlyOwner
-returns(string memory bookTitle, string memory authorName, uint256 bookId, address author)
-{
-
-  uint256 storageIndex = indexToStorageIndex[id];
-  (bookTitle, authorName, id,)=getBookDataByStorageIndex(storageIndex);
-
-  //Thought of returning the id according to the fetch, just in case
-  return (bookTitle, authorName, id, author);
-}
-
-
-
-/**
- * @notice Transfers ownership of the contract.
- * a small override of the OpenZeppelin implementantion to show the owner of the contract
- * on the s_owner state variable
- */
-function _transferOwnership(address newOwner) internal override{
-    s_owner = newOwner;
-    Ownable.transferOwnership(newOwner);
-}
-
+/*//////////////////////////////////////////////////////////////
+                        PRIVATE FUNCTIONS
+//////////////////////////////////////////////////////////////*/
 
 
 /**
  * @notice Checks if the amount is above the minimum value set for transactions and returns a boolean
  * asserting whether or not it is.
  * The minimum value is relevant mainly for gas concerns, 
- * and hence network deployment is relevant in defining its value (constructor).
+ * and hence network deployment is relevant in defining its value.
  * @param ethAmount ETH amount to evaluate in wei
  */
   function isAboveMinValue(uint256 ethAmount) private view returns(bool){
@@ -377,44 +496,78 @@ function _transferOwnership(address newOwner) internal override{
   }
 
 
-  fallback() external payable {
-        addCapital();
-  }
 
-  receive() external payable {
-        addCapital();
-  }
+/*///////////////////////////////////////////////////////////
+                    EXTERNAL FUNCTIONS
+///////////////////////////////////////////////////////////*/
+
 
 /**
- * @notice Checks if the address is an author, and returns a boolean. The check sees that it has a name assigned.
+ * function that returns the data of a book, including the author's wallet address. 
+ * Used for checks with GovernanceContract.
+ * @param id unique ID of the book
+ * @return bookTitle Title of the book
+ * @return authorName name of the author
+ * @return bookId unique ID of the book (returned again)
+ * @return author address of the book's author
+ */
+function getAllBookDataById(uint256 id) external view onlyOwner
+returns(string memory bookTitle, string memory authorName, uint256 bookId, address author)
+{
+
+  uint256 storageIndex = indexToStorageIndex[id];
+  (bookTitle, authorName, id,) = getBookDataByStorageIndex(storageIndex);
+
+  return (bookTitle, authorName, id, author);
+}
+
+
+
+/**
+ * @notice Checks if the address is an author recognized by the protocol.
  * @param caller The address to check
- * 
  */
 function addressIsAuthor(address caller) external view returns(bool){
-    if(keccak256(bytes(addressToName[caller])) != keccak256(bytes(""))){
+   //Checks whether there is a string-name assigned to the address
+    if(addressToRole[caller] == ProtocolRole.AUTHOR)
+    {
       return true;
     }
   return false;
 }
 
+/**
+ * @notice function that returns a boolean asserting whether the argument address belongs to a library
+ * @param caller address for which role wants to be confirmed
+ * 
+ */
 function addressIsLibrary(address caller) external view returns(bool){
-if(keccak256(bytes(addressToName[caller])) != keccak256(bytes(""))){
+if(addressToRole[caller] == ProtocolRole.LIBRARY){
       return true;
     }
   return false;
 }
 
+
+
+/**
+ * function that returns the alphanumeric name assigned to an address inside the protocol
+ * @param caller address to get the name of. 
+ * @notice This actually has a lot of trouble. Anyone can call it. Anyone can get any name.
+ * The param says caller. It seems to have to do with the manager?
+ * <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<CHECK THAT
+ */
 function getName(address caller) external view returns(string memory){
   return addressToName[caller];
 }
 
-function getComissionInEth(uint256 comissionInUsd) public view returns(uint256 comissionInEth){
-  uint256 ethPrice = PriceConverter.getConversionRate(1, s_priceFeed);
-  comissionInEth = comissionInUsd * ethPrice;
-  return comissionInEth;
-}
 
-
+/**
+ * function to be used by the contract to see the balance of a participant of the protocol.
+ * @param user address from which the contract balance wants to be read.
+ * Any people can see data stored onchain. So it isn't actually private. 
+ * But in order to make it slightly harder to get it is protected.
+ */
 function getBalance(address user) external view returns(uint256){
   if(user != msg.sender && msg.sender != s_owner){
     revert AddressCantGetBalance();

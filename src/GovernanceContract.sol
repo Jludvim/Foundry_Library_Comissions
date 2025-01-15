@@ -3,7 +3,7 @@
 /**
  * @title: GovernanceContract
  * @author: Jeremias Pini
- * @license: Apache License 2.0
+ * @license: MIT
  */
 pragma solidity ^0.8.18;
 
@@ -14,21 +14,22 @@ pragma solidity ^0.8.18;
  * @notice The goal of this contract is to administrate in a decentralized manner what 
  * can't be algorythmically performed in BookComissions.sol without compromising the safety/security of the 
  * protocol.
- * Namely: Asserting that the registered Libraries are indeed libraries, 
- * asserting that authors are the people they claim up to be, 
- * managing books loading and unloading,
- * and unregistering of any address, be it a library or an author.
+ * - Asserting that the registered Libraries are indeed libraries, 
+ * - asserting that authors are the people they claim up to be, 
+ * - managing books loading and unloading, and unregistering of any address, be it a library or an author.
+ * 
  * The main way in which this aims to be achieved is through careful reviewing of the data provided by a 
  * group democratically chosen by the participants of the protocol.
  * We may call such a group Validators or also Reviewers. In the performance of their labor they might be awarded
- * an economical incentive.
+ * an economical incentive. 
  * For the approval of each proposal (registering, unregistering), 
  * a percentage of favorable votes is deemed necessary in relation to the total number of reviewers.
- * No reviewer knows the answer of other reviewers. (This might fail, doubious idea).
  * If reviewers answer goes according to the final decision, their incentive is awarded. 
  * If an appeal to the decision is finally carried out to success, a penalty is awarded, and successive incentives
  * become smaller.
- */
+
+    WARNING, this contract is still an uncomplete draft, and is quite a mess. Take it with a grain (or two) of salt.
+    */
 
 
 
@@ -37,56 +38,30 @@ pragma solidity ^0.8.18;
  * 
  * 1. We need Reviewers/validators. A group of people and user who validate the input and output of
  *  important data for the protocol.
- * 2. A system to determine validators, and users with permissions.
+ * 2. A system to choose validators, and general users with permissions.
  * 3. A way to introduce new authors and libraries, members of the protocol.
- *      Probably related to validators, who validate them.
- * 4. We need a system to propose and validate new books. Validators probably, once again.
- * 5. We need a way to unregister authors, libraries and books. Probably a similar validating proccess.
- * 
- * Validators generate a problem, however. If we are to manage PRIVATE data of people, 
- * we can't handle them to any person. If we don't handle them to any person, then the system is centralized.
- * If something as important as the setting of addresses is centralized, then there seems to be a relevant issue.
- *
- * 
- * Hence here, for the time being, without the arrival of a better solution and as far as my observation goes,
- * seems to exist the weakest point of the protocol.
- * Some advancements that could solve this, might be:
- *    A.a bureucratic way for validators to validate without knowing the private data itself.
- *    B.The appearance of a decentralized solution for the problem of private autorship validation.
- *      On this particular aspect, many solution have been observed with related aims, such as proof of 
- *      personhood, or the creation of certificates (see Dock, for example). But they are found either unsuiting
- *      to the problem, or if suiting, unable to solve it in the current state and development of the 
- *      blockchain enviroment.
- *    C. The chosen and realisable alternative, might be the election of authorised validators belonging to both
- *       the "centralized" handlers of private data AND also the electing institution thereby represented, 
- *       forming a representative group financed through the protocol.
- *      The problem seems to be how to achieve representation of authors.
- * 
+ *      (validators validate them, probably)
+ * 4. We need a system to propose and validate new books. (Validators probably, once again.)
+ * 5. We need a way to unregister authors, libraries and books. A similar proccess.
+ 
  * 6. We need an algorithm for the work division and management which has to be random and decentralized.
  *          Probably Chainlink random functions.
  * 7. We need a way to know when validators fullfill their work properly.
- *          Perhaps another role of moderators, who check validators, and other moderators' denounces.
- *          Reward for moderators values go like this:
- *                 Moderator error RISE >>>> Validator error RISE >>> 
  * 8. A way to reward active validators, who do fullfill their function
  * 9. A way to deal with unactive validators
- * 
- * Moderators of the protocol need a way to receive decentralized emails from the community. 
- * Ideally a decentralized solution for mail broadcasting.
+ * 10. A way to stablish communication between validators and users.
  *  
  */
 
 
 
 /**
- * Non heterogeneous in many relevant regards, particularly socially. 
- * Possibly political reasons might take the reviewers take in ocassions non-rational actions.
- * Possibly socially differenciated from the common population (and hence possibly biased in possibly some decisions)
- * 
+ * A non-coding related issue:
+ * Political, social, individual biased aspects, can steer the behaviour of privately in-own-interest choosen reviewers.
  * But as far as this governance system concerns the funds of the aforementioned libraries, then beyond the political interpretation and moral or social 
- * evaluation of the decisions taken, it seems that their representation is in fact if not totally, as long as this is a good-hearted donation system, what is mostly needed.
+ * evaluation of the decisions taken, it seems that their representation is in fact if not totally, as long as this is a good-hearted donation system for such institutions, what is mostly needed.
  *  A bigger problem would result if the object was to have a normal usersToAuthors donation system. But in this case, a LibraryToAuthors transfer of funds is the implementation. 
- * The weaknesses of democracy remain present in the system, but its strengths overcome any other present option in lack of an algorythmic  datafeed for an oracle solution to access this data.
+ * The weaknesses of democracy remain present in the system, but its strengths overcome any other present option in lack of an algorythmic datafeed for an oracle solution to access this identity-person/related data.
  * As far as I see, no solution for these shortcomings is currently possible.
  */
 
@@ -125,7 +100,8 @@ error AddressIsAlreadyRegistered();
  * Less mappings could exist.
  * Author proposals could be reviewed so they are also chiefly structure-based, rather than using
  * many many mappings.
- * It is important to consider these things carefully.
+ * some functions haven't been implemented.
+ * and a few are half-way developed, with the remaining code being dimly suggested.
  */
 
  struct BookProposal{
@@ -691,14 +667,18 @@ abi.decode(
     (UpkeepData)
     );
 
-//Scary loops about to run inside the blockchain, minimal risk checker
-if(upkeepData.bookIdsLength > 100 || upkeepData.addressesLength > 100){
+//minimal risk checks before running any loop
+if(upkeepData.bookIdsLength > 100 || upkeepData.addressesLength > 100){ 
+/*having more than a hundred book deletions approved in a short span would probably be beyond any estimated rate*/
     revert TooManyElements();
 }
 
 for(uint256 i = 0; i <upkeepData.bookIdsLength; i++){
     //As the time is fullfilled, Books are removed from the main contract
-    comissContract.removeBook(upkeepData.bookIds[i]);
+    comissContract.removeBook(
+        upkeepData.bookIds[i],
+        false /*deletingAllbooks, only set to true inside AuthorComissions_removeAuthor*/ 
+        );
 }
 
 for(uint256 i = 0; i <upkeepData.addressesLength; i++){
