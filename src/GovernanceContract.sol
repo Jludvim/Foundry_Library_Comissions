@@ -60,7 +60,7 @@ pragma solidity ^0.8.18;
 /**
  * A non-coding related issue:
  * Political, social, individual biased aspects, can steer the behaviour of privately in-own-interest choosen reviewers.
- * But as far as this governance system concerns the funds of the aforementioned libraries, then beyond the political interpretation and moral or social 
+ * But as far as this governance system is concerned with the funds of the aforementioned libraries, then beyond the political interpretation and moral or social 
  * evaluation of the decisions taken, it seems that their representation is in fact if not totally, as long as this is a good-hearted donation system for such institutions, what is mostly needed.
  *  A bigger problem would result if the object was to have a normal usersToAuthors donation system. But in this case, a LibraryToAuthors transfer of funds is the implementation. 
  * The weaknesses of democracy remain present in the system, but its strengths overcome any other present option in lack of an algorythmic datafeed for an oracle solution to access this identity-person/related data.
@@ -184,7 +184,7 @@ error AddressIsAlreadyRegistered();
 
 
 
-
+/**struct used by a mapping, to track the votes of reviewers*/
   struct Vote{
     bool hasVoted;
     bool approval;
@@ -323,8 +323,10 @@ function AddBook(string memory bookTitle, string memory authorName) external pay
  */
 function AddReviewer(address newReviewer, bool replaceValidator) external payable returns(string memory email){
 //At first seems not strictly necessary, but adding a voting system for reviewers might be valuable
-// not sure what the email address is for
-
+/* not sure what the email address was meant to be for when I added it
+Maybe finding a eth-based email protocol? */
+//A system of communication might be needed. For clients to contact reviewers.
+//And then: 1. a way to store those means of contact. 2. A way for users to access those means.
     if((msg.value < 0.01 ether))
     {
         revert InsufficientEth();
@@ -443,11 +445,9 @@ external{
     //The vote is added:
     if(approval == false){
         s_proposedBooks[index].voteScore = s_proposedBooks[index].voteScore -1;
-    //bookToVoteScore[localIndex] = bookToVoteScore[localIndex] -1 ;
     }
     if(approval == true){
         s_proposedBooks[index].voteScore = s_proposedBooks[index].voteScore +1;
-    //bookToVoteScore[localIndex] = bookToVoteScore[localIndex] +1 ;    
     }
 
     bookIndexAndReviewerToVote[index][msg.sender].approval = approval;
@@ -494,12 +494,11 @@ external{
  * AND maybe some solutions depending on the state of the score at the limit time. 
  */
 
-
 }
 
 }
 
-function ValidateAuthor(address author, string memory authorName, bool approval) external{
+function ValidateAddress(address author, string memory authorName, bool approval) external{
   //Reviewers assert validation of an author through this function
   //After a certain percentage of validation, it is added to the list of authors
 
@@ -532,11 +531,10 @@ function ValidateAuthor(address author, string memory authorName, bool approval)
     addressAndReviewerToVote[author][msg.sender].hasVoted = true;
 
     //Current votation progress is evaluated:
-    //If more than 20% reviewers have voted, the protocol starts to see if a 20% approval is reached. 
+    //If more than 20% reviewers have voted, the protocol starts to see if a 20% approval is reached.
     //Once reached, it is approved, if that is ultimately not reached, it is rejected
     
     uint256 amountOfReviews = s_proposedLibrariesAndAuthors[index].voters;
-
     uint256 totalReviewers = s_reviewers.length;
     uint256 pendingReviews = totalReviewers - amountOfReviews;
     if( 
@@ -557,70 +555,38 @@ function ValidateAuthor(address author, string memory authorName, bool approval)
         delete s_proposedLibrariesAndAuthors[index];
         delete proposedAddressToIndex[author];
 
-        /*if the author is the last one in the list, last item is deleted, if he is not, the last element is moved to its position*/
+        /*If author is not the last item of the stack, the current last element is moved to its position*/
         if(index != s_proposedLibrariesAndAuthors.length - 1){
         s_proposedLibrariesAndAuthors[index] = s_proposedLibrariesAndAuthors[s_proposedLibrariesAndAuthors.length-1];
         proposedAddressToIndex[s_proposedLibrariesAndAuthors[index].proposedAddress] = index;
         s_proposedLibrariesAndAuthors.pop();
         }
-        else{
+        else{ //if the author is the last one in the list, last item is deleted
             s_proposedLibrariesAndAuthors.pop();
         }
     }
 
-    //Time constrains are needed here
-    
+    //Time constrains are needed here    
 }
+/*///////////////////////////////////////////////////////////////////////
+ * There was both an approvelibrary() function and approveauthor() here,
+ *  but it was simply unified into the above function, approveAddresses
+ *////////////////////////////////////////////////////////////////////
 
 
-
-function ValidateLibrary(address libraryAddress, string memory libraryName, bool approval) external{
-    //Reviewers validate a library through this function
-    //After a certain percentage of validation, it is added to the list of libraries
-
-
-    if(addressIsReviewer[msg.sender] == false){
-        revert AddressIsntAReviewer();
-    }
-  
-    if(addressAndReviewerToVote[libraryAddress][msg.sender].hasVoted == true){
-        revert CantVoteTwice();
-    }
-  
-    if( keccak256(bytes(libraryName)) != keccak256(bytes(proposedAddressToName[libraryAddress])) ){
-        revert NameIsIncorrect();
-    }
-
-
-    uint256 index = proposedAddressToIndex[libraryAddress];
-       //The vote is added:
-    if(approval == false){
-        s_proposedLibrariesAndAuthors[index].voteScore = s_proposedLibrariesAndAuthors[index].voteScore - 1;
-    }
-    if(approval == true){
-        s_proposedLibrariesAndAuthors[index].voteScore = s_proposedLibrariesAndAuthors[index].voteScore + 1;
-    }
-
-    addressAndReviewerToVote[libraryAddress][msg.sender].approval = approval;
-    addressAndReviewerToVote[libraryAddress][msg.sender].hasVoted = true;
-
-    //vote recounting?
-}
-
-function ValidateReviewer() external{
-    //Reviewers validate a reviewer through this function
-    //Unless there is a big and majoritarian rejectal of the proposal,
-    //The reviewer is added to the list of reviewers
-
-}
-
+/**
+ * @notice function to be used by an author to delete a book.
+ * @param bookId unique id of the book to be deleted.
+ * @param title string title of the book, as stored by the protocol.
+ */
 function RemoveBook(uint256 bookId, string memory title) external{
 
   if(comissContract.addressIsAuthor(msg.sender) == false){
     revert AddressIsntAnAuthor(); //maybe put isnt author of book and isnt an author together as AddressisntAuthor()
   }
 
- (string memory bookTitle,,, address author)= comissContract.getAllBookDataById(bookId);
+  //msg.sender would be this contract, so this call works
+  (string memory bookTitle,,, address author) = comissContract.getAllBookDataById(bookId);
 
  if(msg.sender != author){
     revert AddressIsntAuthorOfBook();
@@ -630,11 +596,16 @@ function RemoveBook(uint256 bookId, string memory title) external{
     revert TitleIsIncorrect();
  }
 
-removeStack.push(RemoveStack(bookId, block.timestamp));
- //Add block.timestamp to removal pile
- //checkupkeep will probably run every 15 days. And the book be removed within a lapse of 15-29 days
+ removeStack.push(RemoveStack(bookId, block.timestamp));
+ //checkupkeep will probably run every 15 days. 
+ //If required elapsed time is similar, the book will be removed within a lapse of 15-29 days
 }
 
+
+
+/**
+ * @notice in this function both libraries and authors can initiate an exit proccess from the protocol.
+ */
 function RemoveAddress() external{
 
     if(comissContract.addressIsAuthor(msg.sender)){
@@ -649,38 +620,19 @@ function RemoveAddress() external{
         revert AddressIsntAnAuthorOrLibrary();
     }
 
-    //This function needs a way to remove ALL the books the author has in the system. 
-    //Not some, not many, but ALL
-
-    //(Or we can either do something like taking his word for charity donation on the books he doesn't appoint) <-- No
-
-    //An author or library request his/her address to be removed from the system. books will be down as well
-    //It will automatically perform after 30 days maximum
 }
 
 
-function RemoveValidator() internal{
-    //A motion to remove a validator is made.
-    //Only possibly requested by authors, validators, or libraries
-}
-
-
-function checkTransactionValue(uint256 value) external view returns(bool enoughEth, bool tooMuchEth)
-{
-    uint256 valueInUsd = PriceConverter.getConversionRate(value, s_priceFeed);
-    if(valueInUsd < MINIMUM_USD){
-        enoughEth = false;
-        tooMuchEth = false;
-    }else if(valueInUsd == MINIMUM_USD){
-        enoughEth = true;
-        tooMuchEth = false;
-    }
-    else{
-        enoughEth = true;
-        tooMuchEth = true;
-    }
-
-        return (enoughEth, tooMuchEth);
+/**
+ * @notice If trouble arises between validators, members, etc, 
+ * democratically removing an address can somewhat make sense.
+ * not implemented yet, but maybe needed.
+ */
+function addressRemovalByReviewers() internal{
+/**
+ * This should probably take a really strong consensus
+ * function content goes here
+ */
 }
 
 
