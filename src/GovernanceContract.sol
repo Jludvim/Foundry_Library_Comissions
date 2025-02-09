@@ -1,10 +1,6 @@
 //SPDX-License-Identifier: Apache-2.0
 
-/**
- * @title: GovernanceContract
- * @author: Jeremias Pini
- * @license: MIT
- */
+
 pragma solidity ^0.8.18;
 
 
@@ -69,31 +65,39 @@ pragma solidity ^0.8.18;
 
 
 
+
+// Layout of Contract:
+// version
+// imports
+// interfaces, libraries, contracts
+// errors
+// constant variables
+// Type declarations
+// Other state variables
+// Events
+// Modifiers
+// Functions
+
+// Layout of Functions:
+// constructor
+// receive function (if exists)
+// fallback function (if exists)
+// external
+// public
+// internal
+// private
+// view & pure functions
+
+
 import {AuthorComissions} from "../src/AuthorComissions.sol";
 import {Strings} from "@openzeppelin/contracts/utils/Strings.sol";
 import {PriceConverter} from "../src/PriceConverter.sol";
 import {AggregatorV3Interface} from "@chainlink/contracts/src/v0.8/shared/interfaces/AggregatorV3Interface.sol";
 import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
+import {VRFConsumerBaseV2Plus} from "@chainlink/contracts/src/v0.8/vrf/dev/VRFConsumerBaseV2Plus.sol";
+import {VRFV2PlusClient} from "@chainlink/contracts/src/v0.8/vrf/dev/libraries/VRFV2PlusClient.sol";
 
-contract GovernanceContract is ReentrancyGuard{
-
-error AddressIsntALibrary();
-error AddressIsntAnAuthor();
-error ValueIsTooSmall();
-error NameIsIncorrect();
-error TitleCantBeEmpty();
-error InsufficientEth();
-error NameSizeIsIncorrect();
-error AddressIsntAReviewer();
-error BookDataIsIncorrect();
-error AddressIsntAuthorOfBook();
-error TitleIsIncorrect();
-error AddressIsntAnAuthorOrLibrary();
-error TooManyElements();
-error CantVoteTwice();
-error AddressIsAlreadyRegistered();
-
-
+contract GovernanceContract is ReentrancyGuard, VRFConsumerBaseV2Plus{
 
 
 /**
@@ -106,8 +110,33 @@ error AddressIsAlreadyRegistered();
  * and a few are half-way developed, with the remaining code being dimly suggested.
  */
 
+error AddressIsntALibrary();
+error AddressIsntAuthor();
+error ValueIsTooSmall();
+error NameIsIncorrect();
+error TitleCantBeEmpty();
+error InsufficientEth();
+error NameSizeIsIncorrect();
+error AddressIsntAReviewer();
+error BookDataIsIncorrect();
+error TitleIsIncorrect();
+error AddressIsntAnAuthorOrLibrary();
+error TooManyElements();
+error CantVoteTwice();
+error AddressIsAlreadyRegistered();
+error CallFailed();
 
 
+
+
+uint256 constant OP_COMISSION_USD = 10;
+uint32 constant REVIEWERS_PER_VALIDATION= 5;
+
+    struct RequestStatus {
+        uint256 paid;
+        bool fulfilled;
+        uint256[] randomWords;
+    }
 
 /**
  * enum that differenciates between the two types of participant addresses (i.e, library and author). 
@@ -127,7 +156,9 @@ error AddressIsAlreadyRegistered();
     uint256 id;
     address author;
     int256 voteScore;
-    uint256 voters;
+    uint256 votes;
+    address[REVIEWERS_PER_VALIDATION] reviewers;
+    uint256 totalPaidEth;
   }
 
 
@@ -138,8 +169,10 @@ error AddressIsAlreadyRegistered();
     AddressType addressType;
     address proposedAddress;
     int256 voteScore;
-    uint256 voters;
+    address[REVIEWERS_PER_VALIDATION] reviewers;
+    uint256 votes;
     string name;
+    uint256 totalPaidEth;
   }
 
 
@@ -157,24 +190,14 @@ error AddressIsAlreadyRegistered();
     }
 
 
-
-
-
-
 /**
- * struct for the stack of books to be deleted in the next upkeep.
+ * structs for the stack of data to be deleted in the next upkeep.
  * The timestamp is added to ensure that there's a 30 days enforced delay before the actual removal.
  */
-  struct RemoveStack{
+  struct RemoveBookStack{
     uint256 id;
     uint256 timestamp;
   }
-
-
-
-/**
- * struct used for the stack of addresses to be deleted inside the next upkeep.
- */
   struct RemoveAddressStack{
     address userAddress;
     uint256 timestamp;
@@ -189,24 +212,31 @@ error AddressIsAlreadyRegistered();
     bool hasVoted;
     bool approval;
   }
-  //If we actually replace proposedbooks with this type, we can remove the mapping that stores
-  //index to reviewingScores, and use the variable within this structure
-  //Some tweaks to the s_proposedBooks accesses and calls might possibly be necessary.
 
 
-//reviewers and proposed reviewers stack
+
+//vrf
+    
+    bytes32 private immutable i_keyhash; /*gasLane*/
+    uint32 private immutable i_callbackGasLimit;       
+    uint16 private immutable i_requestConfirmations = 3; //The minimum value, change if you want
+    uint256 private immutable i_subscriptionId;
+    uint32 private constant NUM_WORDS = 3;
+    mapping(uint256 => RequestStatus) public s_requests;
+    uint256[3] unusedRequestIds; //we take the first, move one spot to the left the other two, and make a call
+                                    //THE CALL that gets random numbers probably needs to update the third
+    uint256 private s_setsOfRandomWordsToAdd;
+
+//reviewers stack
 address[] s_reviewers;
-address[] s_proposedReviewers; //requires a certain rate of approval by other validators
-
-//address[] s_proposedAuthors;
-//address[] s_proposedLibraries;
 
 //Stack of proposed books, and addresses to be added to the protocol.
 AddressProposal[] s_proposedLibrariesAndAuthors;
 BookProposal[] s_proposedBooks;
+//WHY aren't we using simply a stack of addresses, and then a mapping of address to data?
 
-//Instantations of both removal-stacks for the upkeep functions
-RemoveStack[] private removeStack;
+//Instantations of both removal-stacks types, used for data in the upkeep functions
+RemoveBookStack[] private removeBookStack;
 RemoveAddressStack[] removeAddressStack;
 
 //other contracts needed by this contract.
@@ -214,38 +244,29 @@ AuthorComissions comissContract;
 AggregatorV3Interface s_priceFeed;
 
 
-
-//Variables for book approval to the protocol
-//mapping(uint256 bookIndex => mapping(address s_reviewers => bool approval)) addressAndBookToVote;
-mapping(uint256 bookindex => address[] reviewers) bookIndexToReviewers;
-mapping(uint256 bookindex => mapping(address reviewer => Vote)) bookIndexAndReviewerToVote;
-//mapping(uint256 bookIndex => int256 voteScore) bookToVoteScore; //can be removed
-mapping(uint256 id => uint256 storageIndex) idToStorageIndex; 
-//Not sure if it is needed. I think it is needed since bookProposals are a stack, and if it isn't a stack but a map, 
-//the storage will probably keep growing undefinedly.
+    
+    event RequestFulfilled(uint256 requestId, uint256[] randomWords, uint256 payment);
 
 
-
-// names, comissions and Libraries2Reviewers
-mapping(address libraryAddress => address _reviewerAddress) libraryToReviewerAddress;
-mapping(address => bool) addressIsReviewer; //could be address to address too, but for now I see no use for that
-
-
-//temporal storage of data related to a still in votation address
+//can probably go around proposedAddressToname using the stack
 mapping(address proposedAddress => string name) proposedAddressToName;
 mapping(address proposedAddress => uint256 comission) proposedAddressToLibraryComission;
-
-
-// Variables for address approval to the protocol
-//Check these back after reading the contract>>>>>>>>!!!!!
-mapping(address proposedAddress => mapping(address reviewer =>Vote)) addressAndReviewerToVote;
-//mapping(address proposedAddress => int256 voteScore) addressToVoteScore;
+//This could be inside the struct
+//But due to typecast problems and the nested struct, it becomes impossible to add elements, so this is neccessary
+mapping(address proposedAddress => mapping(address reviewer => Vote)) addressAndReviewerToVote;
+//proposed address to its index on the struct's stack.
 mapping(address proposedAddress => uint256 index) proposedAddressToIndex;
 
 
+mapping(address => string) reviewerEmail; //email of reviewer
+mapping(address libraryAddress => address _reviewerAddress) libraryToReviewerAddress; //library to its representing reviewer
 
-
-uint256 constant MINIMUM_USD = 10;
+//Mappings for book approval to the protocol
+/**these might need to be checked after we write the remaining functions*/
+//Can be moved either to the bookProposal's struct, or to a reviewers struct, or to a different new struct
+mapping(uint256 storedBookIndex => address[] reviewers) bookIndexToReviewers;
+mapping(uint256 storedBookIndex => mapping(address reviewer => Vote)) bookIndexAndReviewerToVote;
+mapping(uint256 id => uint256 stackIndex) idToStackBookIndex; //This is the actual storage index 
 
 
 ////////////////////////////
@@ -256,11 +277,31 @@ uint256 constant MINIMUM_USD = 10;
  * constructor
  * @param comContract, authorComissions contract, the contract to be managed (and owned) by this one.
  */
-constructor(address payable comContract){
+constructor(address payable comContract,
+            uint32 callbackGasLimit,
+            bytes32 keyhash,
+            uint256 subscriptionId,
+            address vrfCoordinator
+) VRFConsumerBaseV2Plus(vrfCoordinator)
+{
+i_callbackGasLimit = callbackGasLimit;
+i_keyhash = keyhash;
+i_subscriptionId = subscriptionId;
 comissContract = AuthorComissions(comContract);
 s_priceFeed = comissContract.s_priceFeed();
 s_reviewers.push(msg.sender); //contract is added as the first reviewer.
 }
+
+
+
+
+
+
+/*///////////////////////////////////////////////////////////
+                EXTERNAL FUNCTIONS
+//////////////////////////////////////////////////////////*/
+
+
 
 /**
  * @notice function through which authors can propose a book they wish to add to the protocol.
@@ -271,19 +312,17 @@ s_reviewers.push(msg.sender); //contract is added as the first reviewer.
  * @param authorName string name of the author of the book
  */
 function AddBook(string memory bookTitle, string memory authorName) external payable nonReentrant{ 
+ 
     //A comission is asked, to both avoid spam and also feed the protocol    
-
-    if((msg.value < 0.01 ether)) 
+    if(PriceConverter.getConversionRate(msg.value, s_priceFeed) < OP_COMISSION_USD) 
     {
         revert InsufficientEth();
-    } 
-    else if (msg.value > 0.01 ether)
-    {
-        //Return excess ether. Implement.
-    } 
-
+    } else if (PriceConverter.getConversionRate(msg.value, s_priceFeed) > OP_COMISSION_USD)
+        {
+            //Return excess ether. Implement.
+        } 
     if(!comissContract.addressIsAuthor(msg.sender)){
-        revert AddressIsntAnAuthor();
+        revert AddressIsntAuthor();
     }
     if(keccak256(bytes(authorName)) != keccak256(bytes(comissContract.getName(msg.sender)))){
         revert NameIsIncorrect();
@@ -292,25 +331,25 @@ function AddBook(string memory bookTitle, string memory authorName) external pay
         revert TitleCantBeEmpty();
     }
 
+
+    address[REVIEWERS_PER_VALIDATION] memory reviewers = pickReviewers();
     //Add data, if things went ok through all these checks
     s_proposedBooks.push
     (
-    BookProposal(bookTitle, authorName, s_proposedBooks.length, msg.sender, 0 /*voters*/, 0 /*starting voteScore*/)
+    BookProposal(bookTitle, authorName, s_proposedBooks.length, msg.sender,  0 /*starting voteScore*/, 0, reviewers, msg.value)
     );
 
+    getSetOfRandomWords();
 
+    //PICK REVIEWERS
+    //SEND A MESSAGE TO THEM
+    //return email list
 
-    idToStorageIndex[s_proposedBooks[s_proposedBooks.length-1].id] = s_proposedBooks.length-1; 
     //If the function is non-reentrant, this last line is all we need for index assignation    
-
+    idToStackBookIndex[s_proposedBooks[s_proposedBooks.length-1].id] = s_proposedBooks.length-1;
 }
 
 
-
-
-////////////////////////////////////////////////////
-/////My review got to this point.
-////////////////////////////////////////////////////
 
 
 
@@ -319,18 +358,18 @@ function AddBook(string memory bookTitle, string memory authorName) external pay
 /**
  * @notice through this function libraries can change and add reviewers that operate in name of their institution
  * @param newReviewer address to be added as a reviewer for the protocol
- * @param replaceValidator boolean value to know whether to revert or not if a reviewer is already set
+ * @param replacingReviewer boolean value to know whether to revert or not if a reviewer is already set
  */
-function AddReviewer(address newReviewer, bool replaceValidator) external payable returns(string memory email){
-//At first seems not strictly necessary, but adding a voting system for reviewers might be valuable
-/* not sure what the email address was meant to be for when I added it
-Maybe finding a eth-based email protocol? */
-//A system of communication might be needed. For clients to contact reviewers.
-//And then: 1. a way to store those means of contact. 2. A way for users to access those means.
-    if((msg.value < 0.01 ether))
+function AddReviewer(address newReviewer, bool replacingReviewer, string memory email) external payable
+    /*returns(string memory email)*/
     {
-        revert InsufficientEth();
-    }
+    //If the user that wants something reviewed is contacted, then the possibility of getting scammed lies on him
+    //If it is the other way around, and the reviewer is contacted by the user, at least users won't be the failure point
+    //It could give a higher work-load to reviewers, navigating through messages, with their address being 'public'.
+
+    /*Maybe finding a eth-based email protocol? */
+    //A system of communication might be needed. For clients to contact reviewers.
+    //And then: 1. a way to store those means of contact. 2. A way for users to access those means.
 
     if(!comissContract.addressIsLibrary(msg.sender))
     {
@@ -339,25 +378,29 @@ Maybe finding a eth-based email protocol? */
 
     if(
         libraryToReviewerAddress[msg.sender] != address(0) &&
-        replaceValidator == false
+        replacingReviewer == false
       ){
         revert AddressIsAlreadyRegistered();
     }
-    s_proposedReviewers.push(newReviewer);
 
-    //add email returner
+    s_reviewers.push(newReviewer);
+    reviewerEmail[msg.sender] = email;
 }
 
 
-
-function AddAuthor(string memory name) external payable{
+/**
+ * @notice function used by an address to propose himself as a new author to be added to the protocol
+ * @param name argument that specifies the name of 
+ */
+function AddAuthor(string memory name) external payable returns(string[REVIEWERS_PER_VALIDATION] memory emails){
     //author proposes himself
     //A contact to follow the procedure is shared
     //A comission is asked, to both avoid spam and also feed the protocol
     //A review is started
+    
 
-    if((msg.value < 0.01 ether)) //these values could probably be set in a variable, 
-                                  //and updated to something that makes sense
+    //if eth isn't enough to pay comissions
+    if((PriceConverter.getConversionRate(msg.value, s_priceFeed) < OP_COMISSION_USD)) 
     {
         revert InsufficientEth();
     }
@@ -371,25 +414,51 @@ function AddAuthor(string memory name) external payable{
         revert AddressIsAlreadyRegistered();
     }
 
-    
 
-    //address to index = address => s_proposedLibrariesAndAuthors.length
-    s_proposedLibrariesAndAuthors.push(AddressProposal(AddressType.Author, msg.sender, 0, 0, name));
+
+    address[REVIEWERS_PER_VALIDATION] memory reviewers = pickReviewers();
+
+    s_proposedLibrariesAndAuthors.push(
+            AddressProposal(AddressType.Author,
+            msg.sender,
+            0,
+            reviewers, //<-- Variable length. struct inside struct. We have to cast the struct
+            0,
+            name,
+            msg.value)
+        );
     proposedAddressToIndex[msg.sender] = s_proposedLibrariesAndAuthors.length - 1;
-    proposedAddressToName[msg.sender] = name; //This seems removable. Are names needed in the long term? Maybe for libraries, hardly for authors.
-    // They also exist in the main contract. Has to be thought.
+    proposedAddressToName[msg.sender] = name;
 
+    getSetOfRandomWords();
+
+    emails = getReviewersEmailsAsAString(reviewers);
+    //We return the addresses to which the user has to send a single email to, in order to follow the procedure
+    return (emails);
+
+    //PICK REVIEWERS
+    //GET EMAILS,
+    //TIE EMAILS to the string
+    //RETURN string
 }
+
+
 
 
 /**
  * @dev Library-user proposes to add himself into the protocol
  * @param name Name of the library
  * @param comissionSetInUsd Comission that the library finds confortable donating per author on a given period, expressed in USD
- * @param email the function returns an email address through which establishing contact will be possible, in order to follow the procedure
+ * @param emailAddresses the function returns an email address through which establishing contact will be possible, in order to follow the procedure
  * The function takes a small comission, in order to both avoid spam and feed the protocol.
+ * Might be possible to unify it with the addAuthor
  */
-function AddLibrary(string memory name, uint256 comissionSetInUsd) external returns(string memory email){
+function AddLibrary(string memory name, uint256 comissionSetInUsd) external payable
+ returns(string[REVIEWERS_PER_VALIDATION] memory emailAddresses){
+
+    if(PriceConverter.getConversionRate(msg.value, s_priceFeed) < OP_COMISSION_USD){
+        revert InsufficientEth();
+    }
 
     //Basic integrity checks
     uint256 namelength = checkStringLength(name);
@@ -397,21 +466,34 @@ function AddLibrary(string memory name, uint256 comissionSetInUsd) external retu
         revert NameSizeIsIncorrect();
     }
 
-    if(comissionSetInUsd < 0 /*here a usd conversion is needed*/){
+    if(comissionSetInUsd <= 0){
         revert ValueIsTooSmall();
     }
 
-    s_proposedLibrariesAndAuthors.push(AddressProposal(AddressType.Library, msg.sender, 0, 0, name));
+    
+    address[REVIEWERS_PER_VALIDATION] memory reviewers = pickReviewers();
+
+    s_proposedLibrariesAndAuthors.push(
+        AddressProposal(AddressType.Library, msg.sender, 0, reviewers, 0, name, msg.value)
+        );
     proposedAddressToIndex[msg.sender] = s_proposedLibrariesAndAuthors.length - 1;
-    proposedAddressToName[msg.sender] = name; //This seems removable. Are names needed in the long term? Maybe for libraries, hardly for authors.
-    // They also exist in the main contract. Has to be thought.
+    proposedAddressToName[msg.sender] = name;
 
     proposedAddressToLibraryComission[msg.sender] = comissionSetInUsd;
 
-    //Function to get an email()
+        emailAddresses = getReviewersEmailsAsAString(reviewers);
+    //We return the addresses to which the user has to send a single email to, in order to follow the procedure
+    return (emailAddresses);
 
-    return "";
+
+    //PICK REVIEWERS
+    //GET EMAILS,
+    //TIE EMAILS to the string
+    //RETURN string
+
 }
+
+
 
 
 /**
@@ -422,11 +504,18 @@ function AddLibrary(string memory name, uint256 comissionSetInUsd) external retu
  * @param approval Whether the book is approved or not
  */
 function ValidateBook(string memory bookName, string memory authorName, uint256 localId, bool approval) 
-external{
+external nonReentrant
+{
+    /*Here we have an issue. This will call addBook. If addbook is non-reentrant, and the conditions for adding a book
+    are met, and another book is currently being added, then execution will fail. (Vote wont be added)
+    But the vote wont be added, and then
+    If we make a call that will execute addbook, and the previous call of this function finished, 
+    but the execution of addbook did not, we could get reentrant there
+    */
 
     //Security and integrity checks for the votes:
-    uint256 index = idToStorageIndex[localId];
-    if(addressIsReviewer[msg.sender] == false){
+    uint256 index = idToStackBookIndex[localId];
+    if(keccak256(bytes(reviewerEmail[msg.sender])) == keccak256(bytes(""))){
         revert AddressIsntAReviewer();
     }
 
@@ -450,16 +539,15 @@ external{
         s_proposedBooks[index].voteScore = s_proposedBooks[index].voteScore +1;
     }
 
-    bookIndexAndReviewerToVote[index][msg.sender].approval = approval;
     bookIndexAndReviewerToVote[index][msg.sender].hasVoted = true;
-    
+    bookIndexAndReviewerToVote[index][msg.sender].approval = approval;
 
    
     //Current votation progress is evaluated:
     //If the bookScore absolute value is greater than the pending reviews, the book evaluation is finished
     //This might possibly be changed before deployment, to something requiring even more than 50% positive votes, or gas-saving adjustments
     //In deployment, removing type conversions and the variable declarations below might be a source of gas saves
-     uint256 amountOfReviews = bookIndexToReviewers[index].length;
+     uint256 amountOfReviews = s_proposedBooks[index].votes;
     uint256 totalReviewers = s_reviewers.length;
     uint256 pendingReviews = totalReviewers - amountOfReviews;
 
@@ -470,52 +558,88 @@ external{
     s_proposedBooks[index].voteScore < -1*int256(pendingReviews)
     )
     {
+
+        address[] memory awardedReviewers;
+        uint256 totalValue = s_proposedBooks[index].totalPaidEth;
+        uint256 counter; //push method is only available for storage, and not memory arrays
+        bool approvalResult;
         if(s_proposedBooks[index].voteScore > 0){
+                approvalResult = true;
+
             comissContract.addBook
                 (
                  s_proposedBooks[index].bookTitle, 
                  s_proposedBooks[index].authorName, 
                  payable(s_proposedBooks[index].author)
                 );
+         
           }
-          
+          else{
+                approvalResult = false;
+            }
+
+                //those whose answer was the same as the result, are rewarded
+                for(uint256 i=0;i< REVIEWERS_PER_VALIDATION;i++){
+                    address reviewer = s_proposedLibrariesAndAuthors[index].reviewers[i];
+                    if(bookIndexAndReviewerToVote[index][reviewer].approval == approvalResult){
+                        awardedReviewers[counter] = reviewer;
+                    }
+                }
+                for(uint256 i=0; i<awardedReviewers.length; i++){
+                    (bool callSuccess, ) = payable(awardedReviewers[i]).call{value: totalValue/awardedReviewers.length}("");
+                    if(callSuccess == false){
+                        revert CallFailed();
+                    }
+                }
+
             //After adding (or not) the book, the solved proposal is deleted, and storage optimised
             delete s_proposedBooks[index];
             if(index != s_proposedBooks.length-1){
             s_proposedBooks[index] = s_proposedBooks[s_proposedBooks.length-1];
-            idToStorageIndex[s_proposedBooks[index].id] = index;
+            idToStackBookIndex[s_proposedBooks[index].id] = index;
             }
             //It seems that this function can be reentrant with Addbook. Probably needs something to avoid that.
 
+    /**
+     * This clearly needs some time constrains. 
+     * Possibly one that starts after the first or few first reviewers have voted.
+     * AND has a time limit that is neither too long nor too short.
+     * AND maybe some solutions depending on the state of the score at the limit time. 
+     */
+
+ }
+
+}
+
+
+
 /**
- * This clearly needs some time constrains. 
- * Possibly one that starts after the first or few first reviewers have voted.
- * AND has a time limit that is neither too long nor too short.
- * AND maybe some solutions depending on the state of the score at the limit time. 
+ * @notice function used for reviewers to validate an address proposed to the protocol.
+ * Once a certain percentage of votes is reached (such that the result cannot possibly be changed,
+ * regardless of future votes), the query is solved <--- this needs to be fixed. Not everyone is rewarded, so
+ * not everyone will vote. Timeframes have to be added.
+ * @param libraryOrAuthor address to be approved (name prone to change to something more address-type agnostic)
+ * @param name name of the address proposed for the protocol
+ * @param approval the vote emited by the reviewer calling the function
  */
-
-}
-
-}
-
-function ValidateAddress(address author, string memory authorName, bool approval) external{
+function ValidateAddress(address libraryOrAuthor, string memory name, bool approval) external{
   //Reviewers assert validation of an author through this function
   //After a certain percentage of validation, it is added to the list of authors
 
-    if(addressIsReviewer[msg.sender] == false){
+    if(keccak256(bytes(reviewerEmail[msg.sender])) == keccak256(bytes(""))){
         revert AddressIsntAReviewer();
     }
   
-    if(addressAndReviewerToVote[author][msg.sender].hasVoted == true){
+    if(addressAndReviewerToVote[libraryOrAuthor][msg.sender].hasVoted == true){
         revert CantVoteTwice();
     }
   
-  if( keccak256(bytes(authorName)) != keccak256(bytes(proposedAddressToName[author])) ){
+  if( keccak256(bytes(name)) != keccak256(bytes(proposedAddressToName[libraryOrAuthor])) ){
     revert NameIsIncorrect();
   }
 
 
-    uint256 index = proposedAddressToIndex[author];
+    uint256 index = proposedAddressToIndex[libraryOrAuthor];
 
 
        //The vote is added:
@@ -526,34 +650,63 @@ function ValidateAddress(address author, string memory authorName, bool approval
     if(approval == true){
          s_proposedLibrariesAndAuthors[index].voteScore  = s_proposedLibrariesAndAuthors[index].voteScore + 1;
     }
+    s_proposedLibrariesAndAuthors[index].votes++;
 
-    addressAndReviewerToVote[author][msg.sender].approval = approval;
-    addressAndReviewerToVote[author][msg.sender].hasVoted = true;
 
-    //Current votation progress is evaluated:
-    //If more than 20% reviewers have voted, the protocol starts to see if a 20% approval is reached.
-    //Once reached, it is approved, if that is ultimately not reached, it is rejected
+    addressAndReviewerToVote[libraryOrAuthor][msg.sender].approval = approval;
+    addressAndReviewerToVote[libraryOrAuthor][msg.sender].hasVoted = true;
     
-    uint256 amountOfReviews = s_proposedLibrariesAndAuthors[index].voters;
+    //Current votation progress is evaluated:
+    uint256 amountOfReviews = s_proposedLibrariesAndAuthors[index].votes;
     uint256 totalReviewers = s_reviewers.length;
     uint256 pendingReviews = totalReviewers - amountOfReviews;
+   
+    //Whenever an irreversible (either positive or negative) result is attained, the votation proccess finishes
     if( 
     s_proposedLibrariesAndAuthors[index].voteScore  > int256(pendingReviews) ||
     s_proposedLibrariesAndAuthors[index].voteScore  < -1*int256(pendingReviews)
     )
     {
+
+        address[] memory awardedReviewers;
+        uint256 totalValue = s_proposedLibrariesAndAuthors[index].totalPaidEth;
+        uint256 counter; //push method is only available for storage, and not memory arrays
+        address proposedAddress = s_proposedLibrariesAndAuthors[index].proposedAddress;
+        bool approvalResult;
         if(
-            s_proposedLibrariesAndAuthors[index].voteScore > 0
+            s_proposedLibrariesAndAuthors[index].voteScore > 0 //If the end result is positive
           )
           {
-            comissContract.addAuthor(
-                s_proposedLibrariesAndAuthors[proposedAddressToIndex[author]].name,
-                payable(author)
-            );
+            approvalResult = true;
+
+                comissContract.addAuthor(
+                    s_proposedLibrariesAndAuthors[proposedAddressToIndex[libraryOrAuthor]].name,
+                    payable(libraryOrAuthor)
+                );
+            
+          }else{
+                approvalResult = false;  //If the end result is negative
           }
 
+                //The protocol gives rewards according to reviewers votes and the result, where they are equal
+                for(uint256 i=0;i< REVIEWERS_PER_VALIDATION;i++){
+                    address reviewer = s_proposedLibrariesAndAuthors[index].reviewers[i];
+                    if(addressAndReviewerToVote[proposedAddress][reviewer].approval == approvalResult){
+                        awardedReviewers[counter] = reviewer;
+                    }
+                }
+                //We divide the total comissions of the proccess between the reviewers who voted like the majority did
+                for(uint256 i=0; i<awardedReviewers.length; i++){
+                    (bool callSuccess, ) = payable(awardedReviewers[i]).call{value: totalValue/awardedReviewers.length}("");
+                    if(callSuccess == false){
+                        revert CallFailed();
+                    }
+                }
+
+
+
         delete s_proposedLibrariesAndAuthors[index];
-        delete proposedAddressToIndex[author];
+        delete proposedAddressToIndex[libraryOrAuthor];
 
         /*If author is not the last item of the stack, the current last element is moved to its position*/
         if(index != s_proposedLibrariesAndAuthors.length - 1){
@@ -564,14 +717,12 @@ function ValidateAddress(address author, string memory authorName, bool approval
         else{ //if the author is the last one in the list, last item is deleted
             s_proposedLibrariesAndAuthors.pop();
         }
+
     }
 
     //Time constrains are needed here    
 }
-/*///////////////////////////////////////////////////////////////////////
- * There was both an approvelibrary() function and approveauthor() here,
- *  but it was simply unified into the above function, approveAddresses
- *////////////////////////////////////////////////////////////////////
+
 
 
 /**
@@ -582,21 +733,21 @@ function ValidateAddress(address author, string memory authorName, bool approval
 function RemoveBook(uint256 bookId, string memory title) external{
 
   if(comissContract.addressIsAuthor(msg.sender) == false){
-    revert AddressIsntAnAuthor(); //maybe put isnt author of book and isnt an author together as AddressisntAuthor()
+    revert AddressIsntAuthor(); //maybe put isnt author of book and isnt an author together as AddressisntAuthor()
   }
 
   //msg.sender would be this contract, so this call works
   (string memory bookTitle,,, address author) = comissContract.getAllBookDataById(bookId);
 
  if(msg.sender != author){
-    revert AddressIsntAuthorOfBook();
+    revert AddressIsntAuthor();
  }
 
  if(keccak256(bytes(title)) != keccak256(bytes(bookTitle))){
     revert TitleIsIncorrect();
  }
 
- removeStack.push(RemoveStack(bookId, block.timestamp));
+ removeBookStack.push(RemoveBookStack(bookId, block.timestamp));
  //checkupkeep will probably run every 15 days. 
  //If required elapsed time is similar, the book will be removed within a lapse of 15-29 days
 }
@@ -606,36 +757,33 @@ function RemoveBook(uint256 bookId, string memory title) external{
 /**
  * @notice in this function both libraries and authors can initiate an exit proccess from the protocol.
  */
-function RemoveAddress() external{
+function RemoveAddress(bool remove) external nonReentrant{
+    
+         if(!comissContract.addressIsAuthor(msg.sender)){
+        if(!comissContract.addressIsLibrary(msg.sender)){
+            revert AddressIsntAnAuthorOrLibrary();
+        }
+        }
 
-    if(comissContract.addressIsAuthor(msg.sender)){
-        removeAddressStack.push(RemoveAddressStack(msg.sender, block.timestamp, AddressType.Author));
+
+    if(remove==true){
+        //here there is no protection against putting more than one request
+        //That looks like something important to address
+        removeAddressStack.push(RemoveAddressStack(msg.sender, block.timestamp, AddressType.Library));
+    }else{
+        for(uint256 i=0; i<removeAddressStack.length ; i++){
+            if(removeAddressStack[i].userAddress == msg.sender){
+                removeAddressStack[i] = removeAddressStack[removeAddressStack.length-1];
+                removeAddressStack.pop();
+
+            }
+        }
     }
-
-    else if(comissContract.addressIsLibrary(msg.sender)){
-    removeAddressStack.push(RemoveAddressStack(msg.sender, block.timestamp, AddressType.Library));
-    }
-
-    else{
-        revert AddressIsntAnAuthorOrLibrary();
-    }
-
 }
 
-
-/**
- * @notice If trouble arises between validators, members, etc, 
- * democratically removing an address can somewhat make sense.
- * not implemented yet, but maybe needed.
- */
-function addressRemovalByReviewers() internal{
-/**
- * This should probably take a really strong consensus
- * function content goes here
- */
-}
-
-
+/*/////////////////////////////////////////////////////////
+                PUBLIC FUNCTIONS
+/////////////////////////////////////////////////////////*/
 
 /**
  * @notice returns the length of a string passed as an argument
@@ -649,8 +797,8 @@ function checkStringLength(string memory str) public pure returns (uint256){
 
 /**
  * @notice function necessary for the use of chainlink upkeep.
- * it checks whether there are removal (deletion) proposals for either addresses or books where the wait-time has
- * been fulfilled. 
+ * it checks whether there are removal (deletion) proposals for either addresses or books where the wait-time
+ * (15 days) has been fulfilled. 
  * And returns:
  * @param upkeepNeeded a boolean stating whether the condition is fullfilled, and points out which addresses those are.
  * @param performData a bytes object that holds the indexes of the addresses/books to be deleted.
@@ -663,11 +811,11 @@ function checkUpkeep(
     UpkeepData memory upkeepData;
         
     //these loops actually run off-chain
-    for(uint256 i =0; i< removeStack.length; i++){
+    for(uint256 i =0; i< removeBookStack.length; i++){
 
-        if(block.timestamp - removeStack[i].timestamp > 30 days){ 
+        if(block.timestamp - removeBookStack[i].timestamp > 15 days){ 
             //if the lapse has passed, data is added to our upkeepData struct
-        RemoveStack memory removeStackItem = removeStack[i];
+        RemoveBookStack memory removeStackItem = removeBookStack[i];
         upkeepData.bookIds[upkeepData.bookIdsLength] = removeStackItem.id;
         upkeepData.bookIdsLength++;
         }
@@ -696,45 +844,177 @@ function checkUpkeep(
 
 
 
-function performUpkeep(bytes calldata performData) public{
-UpkeepData memory upkeepData = 
-abi.decode(
-    performData, 
-    (UpkeepData)
-    );
-
-//minimal risk checks before running any loop
-if(upkeepData.bookIdsLength > 100 || upkeepData.addressesLength > 100){ 
-/*having more than a hundred book deletions approved in a short span would probably be beyond any
- estimated work-rate I could assume for the protocol*/
-    revert TooManyElements();
-}
-
-for(uint256 i = 0; i <upkeepData.bookIdsLength; i++){
-    //As the time is fullfilled, Books are removed from the main contract
-    comissContract.removeBook(
-        upkeepData.bookIds[i],
-        false /*deletingAllbooks, only set to true inside AuthorComissions_removeAuthor*/ 
+function performUpkeep(bytes calldata performData) 
+public{
+    UpkeepData memory upkeepData = 
+    abi.decode(
+        performData, 
+        (UpkeepData)
         );
-}
 
-for(uint256 i = 0; i <upkeepData.addressesLength; i++){
-    //As time has been fullfilled, addresses are removed from the main contract
-    //IF the address is an author, his books are removed from the protocol
-    //IF it is a library, his funds are returned
-    upkeepData.addresses[i];
-    if(upkeepData.addresses[i].addressType == AddressType.Author){
-        comissContract.removeAuthor(upkeepData.addresses[i].userAddress);
+    //minimal risk checks before running any loop
+    if(upkeepData.bookIdsLength > 100 || upkeepData.addressesLength > 100){ 
+    /*having more than a hundred book deletions approved in a short span would probably be beyond any
+    estimated work-rate I could assume for the protocol*/
+        revert TooManyElements();
     }
-    if(upkeepData.addresses[i].addressType == AddressType.Library){
-        comissContract.removeLibrary(upkeepData.addresses[i].userAddress);
+
+    for(uint256 i = 0; i <upkeepData.bookIdsLength; i++){
+        //As the time is fullfilled, Books are removed from the main contract
+        comissContract.removeBook(
+            upkeepData.bookIds[i],
+            false /*deletingAllbooks, only set to true inside AuthorComissions_removeAuthor*/ 
+            );
+    }
+
+    for(uint256 i = 0; i <upkeepData.addressesLength; i++){
+        //As time has been fullfilled, addresses are removed from the main contract
+        //IF the address is an author, his books are removed from the protocol
+        //IF it is a library, his funds are returned
+        upkeepData.addresses[i];
+        if(upkeepData.addresses[i].addressType == AddressType.Author){
+            comissContract.removeAuthor(upkeepData.addresses[i].userAddress);
+        }
+        if(upkeepData.addresses[i].addressType == AddressType.Library){
+            comissContract.removeLibrary(upkeepData.addresses[i].userAddress);
+        }
     }
 }
 
 
 
 
+
+/*////////////////////////////////////////////////////////////
+                    INTERNAL FUNCTIONS
+////////////////////////////////////////////////////////////*/
+
+
+
+/**
+ * @notice function called by Chainlink to return provable random values
+ * @param _requestId Id of our request
+ * @param _randomWords set of random values requested
+ */
+    function fulfillRandomWords(
+        uint256 _requestId,
+        uint256[] calldata _randomWords
+    ) internal override 
+    {
+        
+        require(s_requests[_requestId].paid > 0, "request not found");
+        s_requests[_requestId].fulfilled = true;
+        s_requests[_requestId].randomWords = _randomWords;
+
+        
+        emit RequestFulfilled(
+            _requestId,
+            _randomWords,
+            s_requests[_requestId].paid
+        );
+
+     
+
+    }
+
+
+
+/**
+ * @notice function that requests a new batch of random words to the vrf
+ */
+    function getSetOfRandomWords() internal{
+        uint256 requestId;
+                      // Will revert if subscription is not set and funded.
+        requestId = s_vrfCoordinator.requestRandomWords(
+            VRFV2PlusClient.RandomWordsRequest({
+                keyHash: i_keyhash,
+                subId: i_subscriptionId,
+                requestConfirmations: i_requestConfirmations,
+                callbackGasLimit: i_callbackGasLimit,
+                numWords: REVIEWERS_PER_VALIDATION,
+                extraArgs: VRFV2PlusClient._argsToBytes(
+                    // Set nativePayment to true to pay for VRF requests with Sepolia ETH instead of LINK
+                    VRFV2PlusClient.ExtraArgsV1({nativePayment: false})
+                )
+            })
+        );
+    }
+
+
+/**
+ * @notice function that returns a batch of random numbers (randomWords). Random words
+ *  are used in the protocol to randomly assign reviewers to a particular addition/removal-proposal
+ * THIS probably needs a loop on the unusedRequestIds.
+ */
+function fetchSetOfRandomWords() internal nonReentrant 
+returns(uint256[] memory){
+
+    //gets randomWords
+    uint256 requestId = unusedRequestIds[0];
+    uint256[] memory randomWords = s_requests[requestId].randomWords;
+
+    //updates unusedRequestIds' stack
+    unusedRequestIds[0] = unusedRequestIds[1];
+    unusedRequestIds[1] = unusedRequestIds[2];
+    s_setsOfRandomWordsToAdd += 1; //asks for a new randomWord
+
+    return randomWords;
 }
+
+
+/**
+ * @notice function that picks (a set of) reviewers to work on a particular approval proccess
+ * @return reviewersAddresses returned stack of addresses with the reviewers that were randomly picked
+ */
+function pickReviewers() internal
+returns(address[REVIEWERS_PER_VALIDATION] memory reviewersAddresses){
+
+    //If this function calls a non-reentrant function (like, fetchSetOfRandomWords), it might work just well.
+    uint256[] memory randomWords = fetchSetOfRandomWords();
+
+    uint256 poolOfReviewers = s_reviewers.length;
+    uint256[REVIEWERS_PER_VALIDATION] memory indexReviewers;   
+    /*converts randomWords in a value within 0 and poolOfReviewers
+    Assigns the reviewers using those values*/
+    for(uint256 i=0; i < REVIEWERS_PER_VALIDATION; i++){
+        randomWords[i] = randomWords[i] % poolOfReviewers;
+        indexReviewers[i] = randomWords[i];
+        reviewersAddresses[i] = s_reviewers[indexReviewers[i]];
+    }
+
+    return (reviewersAddresses);
+}
+
+
+/**
+ * @notice If trouble arises between validators, members, etc, 
+ * democratically removing an address can somewhat make sense.
+ * not implemented yet, but maybe needed.
+ */
+function addressRemovalByReviewers() internal{
+/**
+ * This should probably take a really strong consensus
+ * function content goes here
+ */
+}
+
+
+/**
+ * @notice a internal function that returns the emails of the choosen reviewers as a string array
+ * @param reviewerAddress array of addresses to fetch the email's of
+ * @return emails email addresses to be returned
+ */
+function getReviewersEmailsAsAString(address[REVIEWERS_PER_VALIDATION] memory reviewerAddress) internal view
+returns(string[REVIEWERS_PER_VALIDATION] memory emails){
+        for(uint256 i=0;i<REVIEWERS_PER_VALIDATION;i++){
+            emails[i] = reviewerEmail[reviewerAddress[i]];
+        }
+    return emails;
+}
+
+
+
+
 
 
 

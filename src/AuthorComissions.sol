@@ -100,16 +100,18 @@ contract AuthorComissions is Ownable, ReentrancyGuard{
   error AddressCantGetBalance();
   error AuthorComissions__AuthorNameIsIncorrect();
                       
+
+
 /*/////////////////////////////////////////////////////////////////
                         VARIABLES
 /////////////////////////////////////////////////////////////////*/
 
   address s_owner;
-  uint256 booksCount;
+  uint256 booksCount; //used to assign IDs, starts at 1.
   Book[] s_books;
   
   AggregatorV3Interface public s_priceFeed;
-  uint256 public constant MINIMUM_USD = 10e18;
+  uint256 public constant MINIMUM_USD = 2;
   enum ProtocolRole{ NON_PARTICIPANT, LIBRARY, AUTHOR }
 
 
@@ -117,10 +119,11 @@ contract AuthorComissions is Ownable, ReentrancyGuard{
   array index (which changes every time an item is deleted)*/
   mapping(uint256 virtualIndex => uint256 realIndex) private indexToStorageIndex;
 
-  //These Store the balance of an address, and the NAME of the address defined in the protocol 
+  //These Store the balance of an address, and the NAME of the address as defined in the protocol 
   mapping(address => uint256) private addressToBalance;
-  mapping(address => string) private addressToName; //A Enum or something akin can be added to the stored-value
+  mapping(address => string) private addressToName;
   mapping(address => ProtocolRole) addressToRole;
+
   //Returns the comission value that the library sets for their own contributions
   mapping(address => uint256) private libraryComissionInUsd;
 
@@ -130,15 +133,8 @@ contract AuthorComissions is Ownable, ReentrancyGuard{
      //It could cause some problems, think of empty book IDs, and any author "having it", by default. <<--Check this overall in the contract
 
 
-  /*Internally relevant for the contract, does fetch the address(es) to deposit to based on the
-  bookname and authorname pair*/
-  //THIS ALSO FEELS BAD. SEEMS LIKE WE USE TWO REPEATABLE VALUES. Probably would create conflicts 
-  //FOR example, overwritting an author name, and bookname, with a new author. What would you do then?
-
-  //Maybe, maybe replace bookname with bookId. It could work better.
+  //Returns the address of an author from the unique ID of a book.
   mapping(uint256 bookId => address authorsAddress) private bookToAuthorsAddress;
-
-
 
   struct Book{
     string s_bookTitle;
@@ -158,7 +154,6 @@ contract AuthorComissions is Ownable, ReentrancyGuard{
     s_priceFeed = priceFeed;
     booksCount = 1; 
     //booksCount starts at 1 to avoid any risk related to default values
-
   }
 
 
@@ -215,7 +210,7 @@ contract AuthorComissions is Ownable, ReentrancyGuard{
  * adds a library to the contract. 
  * If the owner is the governanceContract (it should), it  does performs many checks before calling.
  * 
- * @param newLibrary address of EOW of the library.
+ * @param newLibrary EOW of the library.
  * @param libraryName alphanumeric name of the library
  * @param comissionSet comission choosen by the library for lending instances
  */
@@ -249,13 +244,12 @@ external onlyOwner{
  * @param authorName name of the author
  * @param author address of the author
  */
-//This looks sorta prone to reentrancy issues.
+//What happens if nonReentrant blocks the execution of the code? How does the addBook call in governance work?
 function addBook(string memory bookName, string memory authorName, address payable author)
- external onlyOwner returns (uint256 id){
+ external onlyOwner nonReentrant returns (uint256 id){
   id = booksCount;
   booksCount++;
   s_books.push(Book(bookName, authorName, id, author));
-  //dubious yet
   authorToBooks[author].push(id);
 
   return id;
@@ -298,7 +292,7 @@ external onlyOwner{
   bool removingAuthor = true;
   for(i; i < authorToBooks[authorToRemove].length; i++){
     removeBook(authorToBooks[authorToRemove][i], removingAuthor);
-    //CHECK WHETHER 0 IS A USED INDEX. it shouldn't.
+  
     if(i == authorToBooks[authorToRemove].length-1){
       delete authorToBooks[authorToRemove];
     }
@@ -323,6 +317,7 @@ payable returns(bool success)
   if(PriceConverter.getConversionRate(msg.value, s_priceFeed) < MINIMUM_USD){
     revert BelowMinValue();
   }
+
   if(addressToRole[msg.sender] != ProtocolRole.LIBRARY){
     revert AddressIsntARegisteredLibrary();
   }
@@ -490,9 +485,8 @@ returns(string memory bookName, string memory authorName, uint256 id, address au
      uint256 usdValue = PriceConverter.getConversionRate(ethAmount, s_priceFeed);
       if(usdValue >= MINIMUM_USD){
         return true;
-      }else{
-        return false;
       }
+        return false;
   }
 
 
