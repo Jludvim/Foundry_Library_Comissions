@@ -101,13 +101,11 @@ contract GovernanceContract is ReentrancyGuard, VRFConsumerBaseV2Plus{
 
 
 /**
- * @dev Many things currently being worked on. The structures aren't being properly used.
- * Book proposal can be more efficient and dependant on the structure and less on mappings.
- * Less mappings could exist.
- * Author proposals could be reviewed so they are also chiefly structure-based, rather than using
- * many many mappings.
+ * @dev Many things currently being worked on. The structures might be used more than they are, reducing mappings
+ * The code that resolves the votation in addBook and AddAuthor should be moved to Chainlink's automation system
+ * The name should no longer be an identifier, or we should find a way around the issues that arise because of that
  * some functions haven't been implemented.
- * and a few are half-way developed, with the remaining code being dimly suggested.
+ * and a few are half-way developed, with the remaining code being somewhat suggested.
  */
 
 error AddressIsntALibrary();
@@ -311,8 +309,8 @@ s_reviewers.push(msg.sender); //contract is added as the first reviewer.
  * @param bookTitle title of the book to be proposed
  * @param authorName string name of the author of the book
  */
-function AddBook(string memory bookTitle, string memory authorName) external payable nonReentrant{ 
- 
+function AddBook(string memory bookTitle, string memory authorName) external payable{ 
+
     //A comission is asked, to both avoid spam and also feed the protocol    
     if(PriceConverter.getConversionRate(msg.value, s_priceFeed) < OP_COMISSION_USD) 
     {
@@ -345,7 +343,6 @@ function AddBook(string memory bookTitle, string memory authorName) external pay
     //SEND A MESSAGE TO THEM
     //return email list
 
-    //If the function is non-reentrant, this last line is all we need for index assignation    
     idToStackBookIndex[s_proposedBooks[s_proposedBooks.length-1].id] = s_proposedBooks.length-1;
 }
 
@@ -390,13 +387,10 @@ function AddReviewer(address newReviewer, bool replacingReviewer, string memory 
 
 /**
  * @notice function used by an address to propose himself as a new author to be added to the protocol
- * @param name argument that specifies the name of 
+ * @param name argument that specifies the name of the author that wants to join the protocol
+ * @return emails stack of emails is returned, to which an email has to be sent to continue the procedure
  */
 function AddAuthor(string memory name) external payable returns(string[REVIEWERS_PER_VALIDATION] memory emails){
-    //author proposes himself
-    //A contact to follow the procedure is shared
-    //A comission is asked, to both avoid spam and also feed the protocol
-    //A review is started
     
 
     //if eth isn't enough to pay comissions
@@ -408,7 +402,8 @@ function AddAuthor(string memory name) external payable returns(string[REVIEWERS
     uint256 namelength = checkStringLength(name);
     if(namelength == 0 || namelength > 50){
         revert NameSizeIsIncorrect();
-    }
+    } /*@dev as is, it seems two authors can end up with the same name, and overlapping themselves. 
+    A check might be needed; or what feels more intuitive: change the actual id to another parameter.*/
 
     if(keccak256(bytes(comissContract.getName(msg.sender))) != keccak256(bytes(""))){
         revert AddressIsAlreadyRegistered();
@@ -422,7 +417,7 @@ function AddAuthor(string memory name) external payable returns(string[REVIEWERS
             AddressProposal(AddressType.Author,
             msg.sender,
             0,
-            reviewers, //<-- Variable length. struct inside struct. We have to cast the struct
+            reviewers, 
             0,
             name,
             msg.value)
@@ -435,11 +430,6 @@ function AddAuthor(string memory name) external payable returns(string[REVIEWERS
     emails = getReviewersEmailsAsAString(reviewers);
     //We return the addresses to which the user has to send a single email to, in order to follow the procedure
     return (emails);
-
-    //PICK REVIEWERS
-    //GET EMAILS,
-    //TIE EMAILS to the string
-    //RETURN string
 }
 
 
@@ -482,14 +472,9 @@ function AddLibrary(string memory name, uint256 comissionSetInUsd) external paya
     proposedAddressToLibraryComission[msg.sender] = comissionSetInUsd;
 
         emailAddresses = getReviewersEmailsAsAString(reviewers);
+
     //We return the addresses to which the user has to send a single email to, in order to follow the procedure
     return (emailAddresses);
-
-
-    //PICK REVIEWERS
-    //GET EMAILS,
-    //TIE EMAILS to the string
-    //RETURN string
 
 }
 
@@ -504,14 +489,8 @@ function AddLibrary(string memory name, uint256 comissionSetInUsd) external paya
  * @param approval Whether the book is approved or not
  */
 function ValidateBook(string memory bookName, string memory authorName, uint256 localId, bool approval) 
-external nonReentrant
+external
 {
-    /*Here we have an issue. This will call addBook. If addbook is non-reentrant, and the conditions for adding a book
-    are met, and another book is currently being added, then execution will fail. (Vote wont be added)
-    But the vote wont be added, and then
-    If we make a call that will execute addbook, and the previous call of this function finished, 
-    but the execution of addbook did not, we could get reentrant there
-    */
 
     //Security and integrity checks for the votes:
     uint256 index = idToStackBookIndex[localId];
@@ -543,10 +522,11 @@ external nonReentrant
     bookIndexAndReviewerToVote[index][msg.sender].approval = approval;
 
    
-    //Current votation progress is evaluated:
-    //If the bookScore absolute value is greater than the pending reviews, the book evaluation is finished
-    //This might possibly be changed before deployment, to something requiring even more than 50% positive votes, or gas-saving adjustments
-    //In deployment, removing type conversions and the variable declarations below might be a source of gas saves
+    /* @dev Current votation progress is evaluated:
+    If the bookScore absolute value is greater than the pending reviews, the book evaluation is finished
+    In deployment, removing type conversions and the variable declarations below might be a source of gas saves
+    */
+
      uint256 amountOfReviews = s_proposedBooks[index].votes;
     uint256 totalReviewers = s_reviewers.length;
     uint256 pendingReviews = totalReviewers - amountOfReviews;
@@ -578,7 +558,10 @@ external nonReentrant
                 approvalResult = false;
             }
 
-                //those whose answer was the same as the result, are rewarded
+            //those whose answer was the same as the result, are rewarded
+                
+            /*@dev This is sort of a bummer for the last vote in gas.
+             Should move to automated execution, and reduce time checks */
                 for(uint256 i=0;i< REVIEWERS_PER_VALIDATION;i++){
                     address reviewer = s_proposedLibrariesAndAuthors[index].reviewers[i];
                     if(bookIndexAndReviewerToVote[index][reviewer].approval == approvalResult){
@@ -598,33 +581,30 @@ external nonReentrant
             s_proposedBooks[index] = s_proposedBooks[s_proposedBooks.length-1];
             idToStackBookIndex[s_proposedBooks[index].id] = index;
             }
-            //It seems that this function can be reentrant with Addbook. Probably needs something to avoid that.
-
-    /**
-     * This clearly needs some time constrains. 
-     * Possibly one that starts after the first or few first reviewers have voted.
-     * AND has a time limit that is neither too long nor too short.
-     * AND maybe some solutions depending on the state of the score at the limit time. 
-     */
+    /* @dev This needs some time constrains. Possibly one that starts after the first or few first reviewers 
+    have voted.*/
 
  }
 
 }
 
-
+/**
+ * If we reward the reviewers with an ERC-20 minted on resolution, then we can probably reward every voter.
+ * If we on the other hand do divide the comissions of eth, then we need to limit the reviewers. Otherwise the
+ * rewards per reviewer will be smaller for each proposal.
+ * If we limit per time, then reward will be variable. So, as long as we don't switch for an ERC-20, 
+ * a capped amount of reviewers is best.
+ */
 
 /**
  * @notice function used for reviewers to validate an address proposed to the protocol.
  * Once a certain percentage of votes is reached (such that the result cannot possibly be changed,
- * regardless of future votes), the query is solved <--- this needs to be fixed. Not everyone is rewarded, so
- * not everyone will vote. Timeframes have to be added.
+ * regardless of future votes), the query is solved
  * @param libraryOrAuthor address to be approved (name prone to change to something more address-type agnostic)
  * @param name name of the address proposed for the protocol
  * @param approval the vote emited by the reviewer calling the function
  */
 function ValidateAddress(address libraryOrAuthor, string memory name, bool approval) external{
-  //Reviewers assert validation of an author through this function
-  //After a certain percentage of validation, it is added to the list of authors
 
     if(keccak256(bytes(reviewerEmail[msg.sender])) == keccak256(bytes(""))){
         revert AddressIsntAReviewer();
@@ -688,7 +668,9 @@ function ValidateAddress(address libraryOrAuthor, string memory name, bool appro
                 approvalResult = false;  //If the end result is negative
           }
 
+
                 //The protocol gives rewards according to reviewers votes and the result, where they are equal
+            /*@dev should move resolution to automated execution*/
                 for(uint256 i=0;i< REVIEWERS_PER_VALIDATION;i++){
                     address reviewer = s_proposedLibrariesAndAuthors[index].reviewers[i];
                     if(addressAndReviewerToVote[proposedAddress][reviewer].approval == approvalResult){
@@ -733,7 +715,7 @@ function ValidateAddress(address libraryOrAuthor, string memory name, bool appro
 function RemoveBook(uint256 bookId, string memory title) external{
 
   if(comissContract.addressIsAuthor(msg.sender) == false){
-    revert AddressIsntAuthor(); //maybe put isnt author of book and isnt an author together as AddressisntAuthor()
+    revert AddressIsntAuthor();
   }
 
   //msg.sender would be this contract, so this call works
@@ -767,8 +749,9 @@ function RemoveAddress(bool remove) external nonReentrant{
 
 
     if(remove==true){
-        //here there is no protection against putting more than one request
-        //That looks like something important to address
+        /*@dev here there is no protection against putting more than one request. Maybe implement logic to handle that
+        inside the upkeep*/
+        //Perhaps a way for the address to know that their request exists?
         removeAddressStack.push(RemoveAddressStack(msg.sender, block.timestamp, AddressType.Library));
     }else{
         for(uint256 i=0; i<removeAddressStack.length ; i++){
@@ -852,15 +835,16 @@ public{
         (UpkeepData)
         );
 
-    //minimal risk checks before running any loop
+    //minimal risk checks
     if(upkeepData.bookIdsLength > 100 || upkeepData.addressesLength > 100){ 
-    /*having more than a hundred book deletions approved in a short span would probably be beyond any
-    estimated work-rate I could assume for the protocol*/
+    /*@dev having more than a hundred book deletions approved in a short span would probably be beyond any
+    estimated deletion-rate that I would assume. However this probably needs a different resolution. 
+    This freezes this functionality, if for some reason that came to happen.*/
         revert TooManyElements();
+
     }
 
     for(uint256 i = 0; i <upkeepData.bookIdsLength; i++){
-        //As the time is fullfilled, Books are removed from the main contract
         comissContract.removeBook(
             upkeepData.bookIds[i],
             false /*deletingAllbooks, only set to true inside AuthorComissions_removeAuthor*/ 
@@ -868,9 +852,9 @@ public{
     }
 
     for(uint256 i = 0; i <upkeepData.addressesLength; i++){
-        //As time has been fullfilled, addresses are removed from the main contract
-        //IF the address is an author, his books are removed from the protocol
-        //IF it is a library, his funds are returned
+        /*@dev As time has been fullfilled, addresses are removed from the main contract <-- I Think I didn't implement this bit yet
+        If the address is an author, his books are removed from the protocol
+        If it is a library, his funds are returned */
         upkeepData.addresses[i];
         if(upkeepData.addresses[i].addressType == AddressType.Author){
             comissContract.removeAuthor(upkeepData.addresses[i].userAddress);
@@ -946,7 +930,7 @@ public{
  *  are used in the protocol to randomly assign reviewers to a particular addition/removal-proposal
  * THIS probably needs a loop on the unusedRequestIds.
  */
-function fetchSetOfRandomWords() internal nonReentrant 
+function fetchSetOfRandomWords() internal
 returns(uint256[] memory){
 
     //gets randomWords

@@ -189,7 +189,7 @@ contract AuthorComissions is Ownable, ReentrancyGuard{
       revert BalanceIsLessThanSetComission();
     }
 
-    address payable author = payable(bookToAuthorsAddress[bookId]);
+    address payable author = payable(bookToAuthorsAddress[bookId]); /*@dev this line is troublesome, probably a way around it is needed*/
 
     if(keccak256(abi.encode(addressToName[author])) != keccak256(abi.encode(authorname))){
         revert AuthorComissions__AuthorNameIsIncorrect();
